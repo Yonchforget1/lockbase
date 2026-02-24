@@ -56,6 +56,11 @@ export interface Database {
         Insert: Omit<Bookmark, 'id' | 'created_at'>;
         Update: Partial<Omit<Bookmark, 'id'>>;
       };
+      conversation_history: {
+        Row: ConversationHistory;
+        Insert: Omit<ConversationHistory, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<ConversationHistory, 'id'>>;
+      };
     };
     Functions: {
       search_all: {
@@ -115,10 +120,16 @@ export interface AutomotiveKey {
   remote_frequency: string | null;
   key_type: 'standard' | 'transponder' | 'smart_key' | 'proximity';
   fcc_id: string | null;
+  ic_number: string | null;
   programming_notes: string | null;
   pin_code_required: boolean;
   obd_programmable: boolean;
   emergency_key_blank: string | null;
+  battery_type: string | null;
+  buttons: string | null;
+  test_key_blank: string | null;
+  image_url: string | null;
+  lishi_tool: string | null;
   year_start: number;
   year_end: number;
   created_at: string;
@@ -138,7 +149,17 @@ export interface ResidentialLock {
   drill_resistant: boolean;
   ansi_grade: string | null;
   smart_features: string | null;
+  image_url: string | null;
   created_at: string;
+}
+
+export interface ConversationHistory {
+  id: string;
+  user_id: string;
+  title: string;
+  messages: Array<{ role: string; content: string; timestamp: string }>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ResidentialKeyBlank {

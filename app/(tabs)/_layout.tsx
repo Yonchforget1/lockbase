@@ -52,6 +52,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="assistant"
+        options={{
+          title: 'Assistant',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="robot" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="community"
         options={{
           title: 'Community',

@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -10,43 +10,11 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useSearchStore } from '../../src/stores/searchStore';
 
 const categories = [
+  { key: 'assistant', label: 'AI Assistant', icon: 'robot', color: '#A855F7', count: 'Job Guide' },
   { key: 'car-keys', label: 'Car Keys', icon: 'car-key', color: colors.accentPrimary, count: '65+ Brands' },
   { key: 'house-locks', label: 'House Locks', icon: 'lock', color: colors.accentSecondary, count: '11+ Brands' },
   { key: 'community', label: 'Community', icon: 'forum', color: colors.success, count: 'Discussions' },
-  { key: 'profile', label: 'Bookmarks', icon: 'bookmark', color: colors.warning, count: 'Saved Items' },
 ];
-
-function CategoryCard({ item, index, onPress }: { item: typeof categories[0]; index: number; onPress: () => void }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      delay: index * 100,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  return (
-    <Animated.View style={[styles.categoryCard, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
-      <TouchableOpacity
-        style={styles.categoryTouchable}
-        onPress={onPress}
-        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true, speed: 50 }).start()}
-        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50 }).start()}
-        activeOpacity={1}
-      >
-        <View style={[styles.categoryIcon, { backgroundColor: `${item.color}15` }]}>
-          <MaterialCommunityIcons name={item.icon as any} size={32} color={item.color} />
-        </View>
-        <Text style={styles.categoryLabel}>{item.label}</Text>
-        <Text style={styles.categoryCount}>{item.count}</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -75,13 +43,19 @@ export default function HomeScreen() {
 
         <SectionHeader title="Quick Access" />
         <View style={styles.categoryGrid}>
-          {categories.map((item, index) => (
-            <CategoryCard
+          {categories.map((item) => (
+            <TouchableOpacity
               key={item.key}
-              item={item}
-              index={index}
+              style={styles.categoryTouchable}
               onPress={() => router.push(`/(tabs)/${item.key}` as any)}
-            />
+              activeOpacity={0.7}
+            >
+              <View style={[styles.categoryIcon, { backgroundColor: `${item.color}15` }]}>
+                <MaterialCommunityIcons name={item.icon as any} size={32} color={item.color} />
+              </View>
+              <Text style={styles.categoryLabel}>{item.label}</Text>
+              <Text style={styles.categoryCount}>{item.count}</Text>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -149,11 +123,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
-  categoryCard: {
+  categoryTouchable: {
     width: '48%',
     flexGrow: 1,
-  },
-  categoryTouchable: {
     backgroundColor: colors.bgSecondary,
     borderRadius: 16,
     padding: 20,
