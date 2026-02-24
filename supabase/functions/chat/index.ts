@@ -47,9 +47,15 @@ interface ChatMessage {
   timestamp: string;
 }
 
+interface ImageData {
+  base64: string;
+  mimeType: string;
+}
+
 interface RequestBody {
   message: string;
   conversationHistory: ChatMessage[];
+  images?: ImageData[];
 }
 
 // Search the database for relevant vehicle/lock info
@@ -160,7 +166,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     // Parse request body
-    const { message, conversationHistory }: RequestBody = await req.json();
+    const { message, conversationHistory, images }: RequestBody =
+      await req.json();
 
     if (!message || typeof message !== "string") {
       return new Response(
@@ -180,7 +187,10 @@ Deno.serve(async (req: Request) => {
     const dbContext = formatDatabaseContext(dbResults);
 
     // Build messages array for Claude
-    const messages = (conversationHistory || []).map((msg) => ({
+    const messages: Array<{
+      role: "user" | "assistant";
+      content: string | Array<Record<string, unknown>>;
+    }> = (conversationHistory || []).map((msg) => ({
       role: msg.role as "user" | "assistant",
       content: msg.content,
     }));
@@ -189,7 +199,33 @@ Deno.serve(async (req: Request) => {
     if (dbContext.trim()) {
       enrichedMessage = `${message}\n\n[The following data was found in our database for this query:]\n${dbContext}`;
     }
-    messages.push({ role: "user", content: enrichedMessage });
+
+    // If images are provided, build a multi-part content block for vision
+    if (images && images.length > 0) {
+      const contentParts: Array<Record<string, unknown>> = [];
+
+      // Add each image as an image content block
+      for (const img of images) {
+        contentParts.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: img.mimeType || "image/jpeg",
+            data: img.base64,
+          },
+        });
+      }
+
+      // Add the text message after the images
+      contentParts.push({
+        type: "text",
+        text: enrichedMessage,
+      });
+
+      messages.push({ role: "user", content: contentParts });
+    } else {
+      messages.push({ role: "user", content: enrichedMessage });
+    }
 
     // Call Anthropic API
     const anthropicResponse = await fetch(

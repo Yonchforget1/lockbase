@@ -11,9 +11,14 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Modal,
+  Dimensions,
+  Pressable,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../../../src/lib/theme';
 import { useAssistantStore } from '../../../src/stores/assistantStore';
 import {
@@ -21,11 +26,142 @@ import {
   quickLookup,
   conversationService,
   type ChatMessage,
+  type ImageAttachment,
 } from '../../../src/services/assistant.service';
+import {
+  findInstructionalImages,
+  type InstructionalImage,
+} from '../../../src/services/imageMapping';
 import { useAuth } from '../../../src/hooks/useAuth';
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IMAGE_THUMB_SIZE = 160;
+
+// ─── Image Zoom Modal ──────────────────────────────────────────────
+function ImageZoomModal({
+  visible,
+  imageUri,
+  caption,
+  onClose,
+}: {
+  visible: boolean;
+  imageUri: string | null;
+  caption?: string;
+  onClose: () => void;
+}) {
+  if (!imageUri) return null;
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable style={styles.zoomOverlay} onPress={onClose}>
+        <View style={styles.zoomHeader}>
+          <TouchableOpacity style={styles.zoomCloseBtn} onPress={onClose}>
+            <MaterialCommunityIcons name="close" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.zoomImage}
+          contentFit="contain"
+          transition={200}
+        />
+        {caption ? (
+          <View style={styles.zoomCaptionBar}>
+            <Text style={styles.zoomCaption}>{caption}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Inline Image Grid (for user-sent images) ────────────────────
+function ImageThumbnails({
+  images,
+  onPress,
+}: {
+  images: ImageAttachment[];
+  onPress: (uri: string) => void;
+}) {
+  if (!images.length) return null;
+  return (
+    <View style={styles.imageGrid}>
+      {images.map((img, idx) => (
+        <TouchableOpacity
+          key={idx}
+          activeOpacity={0.8}
+          onPress={() => onPress(img.uri)}
+        >
+          <Image
+            source={{ uri: img.uri }}
+            style={styles.bubbleImage}
+            contentFit="cover"
+            transition={200}
+          />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ─── Instructional Image Cards (for assistant responses) ──────────
+function InstructionalImageCards({
+  images,
+  onPress,
+}: {
+  images: InstructionalImage[];
+  onPress: (uri: string, caption: string) => void;
+}) {
+  if (!images.length) return null;
+  return (
+    <View style={styles.instructionalGrid}>
+      <View style={styles.instructionalHeader}>
+        <MaterialCommunityIcons name="image-multiple" size={14} color={colors.accentSecondary} />
+        <Text style={styles.instructionalLabel}>VISUAL GUIDES</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.instructionalScroll}>
+        {images.map((img, idx) => (
+          <TouchableOpacity
+            key={idx}
+            activeOpacity={0.8}
+            style={styles.instructionalCard}
+            onPress={() => onPress(img.url, img.caption)}
+          >
+            <Image
+              source={{ uri: img.url }}
+              style={styles.instructionalImage}
+              contentFit="cover"
+              transition={200}
+              placeholder={require('../../../assets/images/icon.png')}
+            />
+            <View style={styles.instructionalCaption}>
+              <Text style={styles.instructionalCaptionText} numberOfLines={2}>
+                {img.caption}
+              </Text>
+              <Text style={styles.instructionalCategory}>{img.category}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Message Bubble ───────────────────────────────────────────────
+function MessageBubble({
+  message,
+  onImagePress,
+}: {
+  message: ChatMessage;
+  onImagePress: (uri: string, caption?: string) => void;
+}) {
   const isUser = message.role === 'user';
+  const instructionalImages = !isUser ? findInstructionalImages(message.content) : [];
 
   return (
     <View style={[styles.bubbleRow, isUser && styles.bubbleRowUser]}>
@@ -35,9 +171,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         </View>
       )}
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
+        {/* User-attached images */}
+        {isUser && message.images && message.images.length > 0 && (
+          <ImageThumbnails
+            images={message.images}
+            onPress={(uri) => onImagePress(uri)}
+          />
+        )}
         <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
           {message.content}
         </Text>
+        {/* Instructional images for assistant responses */}
+        {!isUser && instructionalImages.length > 0 && (
+          <InstructionalImageCards
+            images={instructionalImages}
+            onPress={(uri, caption) => onImagePress(uri, caption)}
+          />
+        )}
         <Text style={styles.bubbleTime}>
           {new Date(message.timestamp).toLocaleTimeString([], {
             hour: '2-digit',
@@ -54,6 +204,40 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+// ─── Image Preview Strip (attached before sending) ────────────────
+function AttachedImagesPreview({
+  images,
+  onRemove,
+}: {
+  images: ImageAttachment[];
+  onRemove: (index: number) => void;
+}) {
+  if (!images.length) return null;
+  return (
+    <View style={styles.attachedPreview}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {images.map((img, idx) => (
+          <View key={idx} style={styles.attachedThumb}>
+            <Image
+              source={{ uri: img.uri }}
+              style={styles.attachedImage}
+              contentFit="cover"
+              transition={150}
+            />
+            <TouchableOpacity
+              style={styles.attachedRemove}
+              onPress={() => onRemove(idx)}
+            >
+              <MaterialCommunityIcons name="close-circle" size={20} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Quick Lookup ─────────────────────────────────────────────────
 function QuickLookupResult({ data }: { data: any }) {
   if (!data) return null;
 
@@ -115,7 +299,7 @@ function QuickLookupResult({ data }: { data: any }) {
         </>
       )}
 
-      {(!data.autoKeys?.length && !data.locks?.length) && (
+      {!data.autoKeys?.length && !data.locks?.length && (
         <View style={styles.emptyLookup}>
           <MaterialCommunityIcons name="magnify-close" size={48} color={colors.textTertiary} />
           <Text style={styles.emptyText}>No results found. Try a different search.</Text>
@@ -160,6 +344,7 @@ const SUGGESTIONS = [
   'Kwikset SmartKey reset',
 ];
 
+// ─── Main Screen ──────────────────────────────────────────────────
 export default function AssistantScreen() {
   const {
     messages,
@@ -176,14 +361,72 @@ export default function AssistantScreen() {
   const { user } = useAuth();
   const [input, setInput] = useState('');
   const [lookupData, setLookupData] = useState<any>(null);
+  const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
+  const [zoomImage, setZoomImage] = useState<{ uri: string; caption?: string } | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
+  // ─── Image picking ──────────────────────────────────────────────
+  const pickImage = useCallback(async (source: 'camera' | 'library') => {
+    try {
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Camera access is required to take photos.');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Photo library access is required to select images.');
+          return;
+        }
+      }
+
+      const result = await (source === 'camera'
+        ? ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            quality: 0.7,
+            base64: true,
+            allowsEditing: true,
+            aspect: [4, 3],
+          })
+        : ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            quality: 0.7,
+            base64: true,
+            allowsMultipleSelection: true,
+            selectionLimit: 4 - attachedImages.length,
+          }));
+
+      if (result.canceled) return;
+
+      const newImages: ImageAttachment[] = result.assets.map((asset) => ({
+        uri: asset.uri,
+        base64: asset.base64 || undefined,
+        width: asset.width,
+        height: asset.height,
+        mimeType: asset.mimeType || 'image/jpeg',
+      }));
+
+      setAttachedImages((prev) => [...prev, ...newImages].slice(0, 4));
+    } catch (err: any) {
+      Alert.alert('Error', 'Could not access images. Please try again.');
+    }
+  }, [attachedImages.length]);
+
+  const removeAttachedImage = useCallback((index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // ─── Send handler ───────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    const hasImages = attachedImages.length > 0;
+    if ((!text && !hasImages) || isLoading) return;
     setInput('');
 
     if (mode === 'quick-lookup') {
+      if (!text) return;
       setLoading(true);
       try {
         const results = await quickLookup(text);
@@ -196,16 +439,32 @@ export default function AssistantScreen() {
     }
 
     // Chat mode
+    const imagesToSend = [...attachedImages];
+    setAttachedImages([]);
+
     const userMsg: ChatMessage = {
       role: 'user',
-      content: text,
+      content: text || (hasImages ? 'What can you tell me about this?' : ''),
       timestamp: new Date().toISOString(),
+      images: imagesToSend.length
+        ? imagesToSend.map((img) => ({
+            uri: img.uri,
+            width: img.width,
+            height: img.height,
+            mimeType: img.mimeType,
+            // Don't store base64 in message history (too large)
+          }))
+        : undefined,
     };
     addMessage(userMsg);
 
     setLoading(true);
     try {
-      const reply = await sendAssistantMessage(text, messages);
+      const reply = await sendAssistantMessage(
+        userMsg.content,
+        messages,
+        imagesToSend
+      );
       const botMsg: ChatMessage = {
         role: 'assistant',
         content: reply,
@@ -221,7 +480,8 @@ export default function AssistantScreen() {
             .updateConversation(conversationId, allMsgs)
             .catch(() => {});
         } else {
-          const title = text.length > 50 ? text.substring(0, 50) + '...' : text;
+          const titleText = text || 'Image analysis';
+          const title = titleText.length > 50 ? titleText.substring(0, 50) + '...' : titleText;
           const conv = await conversationService
             .createConversation(user.id, title, allMsgs)
             .catch(() => null);
@@ -237,14 +497,28 @@ export default function AssistantScreen() {
       addMessage(errMsg);
     }
     setLoading(false);
-  }, [input, isLoading, mode, messages, user, conversationId]);
+  }, [input, isLoading, mode, messages, user, conversationId, attachedImages]);
 
   const handleSuggestion = (text: string) => {
     setInput(text);
   };
 
+  const openZoom = useCallback((uri: string, caption?: string) => {
+    setZoomImage({ uri, caption });
+  }, []);
+
+  const canSend = input.trim() || attachedImages.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Image Zoom Modal */}
+      <ImageZoomModal
+        visible={!!zoomImage}
+        imageUri={zoomImage?.uri || null}
+        caption={zoomImage?.caption}
+        onClose={() => setZoomImage(null)}
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -300,7 +574,13 @@ export default function AssistantScreen() {
               Quick Lookup
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton} onPress={clearChat}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => {
+              clearChat();
+              setAttachedImages([]);
+            }}
+          >
             <MaterialCommunityIcons name="plus" size={22} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -323,8 +603,14 @@ export default function AssistantScreen() {
                 />
                 <Text style={styles.emptyTitle}>How can I help?</Text>
                 <Text style={styles.emptyDesc}>
-                  Describe your locksmith job and I'll guide you step by step.
+                  Describe your locksmith job or snap a photo and I'll guide you step by step.
                 </Text>
+                <View style={styles.photoHint}>
+                  <MaterialCommunityIcons name="camera" size={18} color={colors.accentSecondary} />
+                  <Text style={styles.photoHintText}>
+                    Tap the camera icon to identify a lock or key from a photo
+                  </Text>
+                </View>
                 <View style={styles.suggestions}>
                   {SUGGESTIONS.map((s) => (
                     <TouchableOpacity
@@ -341,7 +627,9 @@ export default function AssistantScreen() {
               <FlatList
                 ref={flatListRef}
                 data={messages}
-                renderItem={({ item }) => <MessageBubble message={item} />}
+                renderItem={({ item }) => (
+                  <MessageBubble message={item} onImagePress={openZoom} />
+                )}
                 keyExtractor={(_, idx) => String(idx)}
                 contentContainerStyle={styles.messageList}
                 onContentSizeChange={() =>
@@ -389,13 +677,53 @@ export default function AssistantScreen() {
           </View>
         )}
 
+        {/* Attached Images Preview */}
+        {mode === 'chat' && attachedImages.length > 0 && (
+          <AttachedImagesPreview
+            images={attachedImages}
+            onRemove={removeAttachedImage}
+          />
+        )}
+
         {/* Input Bar */}
         <View style={styles.inputBar}>
+          {mode === 'chat' && (
+            <>
+              <TouchableOpacity
+                style={styles.mediaButton}
+                onPress={() => pickImage('camera')}
+                disabled={isLoading || attachedImages.length >= 4}
+              >
+                <MaterialCommunityIcons
+                  name="camera"
+                  size={22}
+                  color={
+                    attachedImages.length >= 4 ? colors.textTertiary : colors.accentSecondary
+                  }
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.mediaButton}
+                onPress={() => pickImage('library')}
+                disabled={isLoading || attachedImages.length >= 4}
+              >
+                <MaterialCommunityIcons
+                  name="image"
+                  size={22}
+                  color={
+                    attachedImages.length >= 4 ? colors.textTertiary : colors.accentSecondary
+                  }
+                />
+              </TouchableOpacity>
+            </>
+          )}
           <TextInput
             style={styles.textInput}
             placeholder={
               mode === 'chat'
-                ? 'Describe your locksmith job...'
+                ? attachedImages.length
+                  ? 'Add a description (optional)...'
+                  : 'Describe your locksmith job...'
                 : 'Year Make Model or Lock Name...'
             }
             placeholderTextColor={colors.textTertiary}
@@ -407,9 +735,9 @@ export default function AssistantScreen() {
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.sendButton, (!input.trim() || isLoading) && styles.sendButtonDisabled]}
+            style={[styles.sendButton, (!canSend || isLoading) && styles.sendButtonDisabled]}
             onPress={handleSend}
-            disabled={!input.trim() || isLoading}
+            disabled={!canSend || isLoading}
           >
             {isLoading ? (
               <ActivityIndicator size="small" color={colors.bgPrimary} />
@@ -427,6 +755,7 @@ export default function AssistantScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -545,6 +874,156 @@ const styles = StyleSheet.create({
     marginTop: 4,
     alignSelf: 'flex-end',
   },
+
+  // ─── Image styles in bubbles ──────────────────────────────────
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  bubbleImage: {
+    width: IMAGE_THUMB_SIZE,
+    height: IMAGE_THUMB_SIZE,
+    borderRadius: 12,
+    backgroundColor: colors.bgTertiary,
+  },
+
+  // ─── Instructional image cards ────────────────────────────────
+  instructionalGrid: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  instructionalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  instructionalLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accentSecondary,
+    letterSpacing: 0.8,
+  },
+  instructionalScroll: {
+    marginHorizontal: -4,
+  },
+  instructionalCard: {
+    width: 140,
+    marginHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: colors.bgTertiary,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  instructionalImage: {
+    width: 140,
+    height: 100,
+    backgroundColor: colors.bgPrimary,
+  },
+  instructionalCaption: {
+    padding: 8,
+  },
+  instructionalCaptionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    lineHeight: 14,
+  },
+  instructionalCategory: {
+    fontSize: 9,
+    color: colors.textTertiary,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // ─── Attached images preview (before sending) ─────────────────
+  attachedPreview: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bgSecondary,
+  },
+  attachedThumb: {
+    marginRight: 8,
+    position: 'relative',
+  },
+  attachedImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    backgroundColor: colors.bgTertiary,
+  },
+  attachedRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: colors.bgPrimary,
+    borderRadius: 10,
+  },
+
+  // ─── Image zoom modal ────────────────────────────────────────
+  zoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomHeader: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  zoomCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: `${colors.bgSecondary}CC`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: {
+    width: SCREEN_WIDTH - 32,
+    height: SCREEN_WIDTH - 32,
+  },
+  zoomCaptionBar: {
+    position: 'absolute',
+    bottom: 60,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: `${colors.bgSecondary}CC`,
+    borderRadius: 8,
+  },
+  zoomCaption: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+
+  // ─── Photo hint ───────────────────────────────────────────────
+  photoHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${colors.accentSecondary}15`,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 8,
+  },
+  photoHintText: {
+    fontSize: 13,
+    color: colors.accentSecondary,
+    flex: 1,
+  },
+
+  // ─── Empty states ─────────────────────────────────────────────
   emptyChat: {
     flex: 1,
     alignItems: 'center',
@@ -580,14 +1059,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
+
+  // ─── Input bar ────────────────────────────────────────────────
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: 12,
-    gap: 8,
+    gap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.bgSecondary,
+  },
+  mediaButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgTertiary,
   },
   textInput: {
     flex: 1,
@@ -610,7 +1099,8 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.4,
   },
-  // Quick Lookup
+
+  // ─── Quick Lookup ─────────────────────────────────────────────
   lookupContainer: {
     flex: 1,
   },

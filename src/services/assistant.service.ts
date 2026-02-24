@@ -1,10 +1,19 @@
 import { supabase } from '../lib/supabase';
 import type { AutomotiveKey, ResidentialLock } from '../types/database';
 
+export interface ImageAttachment {
+  uri: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  images?: ImageAttachment[];
 }
 
 export interface Conversation {
@@ -71,7 +80,8 @@ export async function quickLookup(query: string) {
 // Send a message to the AI assistant via Edge Function
 export async function sendAssistantMessage(
   userMessage: string,
-  conversationHistory: ChatMessage[]
+  conversationHistory: ChatMessage[],
+  images?: ImageAttachment[]
 ): Promise<string> {
   // Use session token if logged in, otherwise use anon key
   const {
@@ -80,6 +90,14 @@ export async function sendAssistantMessage(
   const token =
     session?.access_token ||
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdG5rcHJ0dHNrb2RnbmZlYXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTk0OTEsImV4cCI6MjA4NzQ3NTQ5MX0.hvBkzBs139gRyaJL2zQkdtUzUdk9GYZH0wnCYR0F0ms';
+
+  // Prepare image data for the edge function
+  const imageData = images
+    ?.filter((img) => img.base64)
+    .map((img) => ({
+      base64: img.base64!,
+      mimeType: img.mimeType || 'image/jpeg',
+    }));
 
   try {
     const response = await fetch(EDGE_FUNCTION_URL, {
@@ -91,6 +109,7 @@ export async function sendAssistantMessage(
       body: JSON.stringify({
         message: userMessage,
         conversationHistory,
+        images: imageData?.length ? imageData : undefined,
       }),
     });
 
