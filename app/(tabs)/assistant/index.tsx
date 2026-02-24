@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors, spacing } from '../../../src/lib/theme';
+import { colors } from '../../../src/lib/theme';
 import { useAssistantStore } from '../../../src/stores/assistantStore';
 import {
   sendAssistantMessage,
@@ -23,53 +23,6 @@ import {
   type ChatMessage,
 } from '../../../src/services/assistant.service';
 import { useAuth } from '../../../src/hooks/useAuth';
-
-function ApiKeyModal({
-  visible,
-  onSave,
-}: {
-  visible: boolean;
-  onSave: (key: string) => void;
-}) {
-  const [key, setKey] = useState('');
-
-  if (!visible) return null;
-
-  return (
-    <View style={styles.modalOverlay}>
-      <View style={styles.modalCard}>
-        <MaterialCommunityIcons
-          name="robot"
-          size={48}
-          color={colors.accentPrimary}
-          style={{ alignSelf: 'center', marginBottom: 12 }}
-        />
-        <Text style={styles.modalTitle}>AI Assistant Setup</Text>
-        <Text style={styles.modalDesc}>
-          Enter your Anthropic API key to enable the AI locksmith assistant.
-          Your key is stored securely on your device.
-        </Text>
-        <TextInput
-          style={styles.apiKeyInput}
-          placeholder="sk-ant-api03-..."
-          placeholderTextColor={colors.textTertiary}
-          value={key}
-          onChangeText={setKey}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-        />
-        <TouchableOpacity
-          style={[styles.saveButton, !key.startsWith('sk-') && styles.saveButtonDisabled]}
-          onPress={() => key.startsWith('sk-') && onSave(key)}
-          disabled={!key.startsWith('sk-')}
-        >
-          <Text style={styles.saveButtonText}>Save & Start</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
@@ -209,15 +162,11 @@ const SUGGESTIONS = [
 
 export default function AssistantScreen() {
   const {
-    apiKey,
     messages,
     isLoading,
     mode,
     conversationId,
-    setApiKey,
-    loadApiKey,
     addMessage,
-    setMessages,
     setLoading,
     setMode,
     setConversationId,
@@ -228,10 +177,6 @@ export default function AssistantScreen() {
   const [input, setInput] = useState('');
   const [lookupData, setLookupData] = useState<any>(null);
   const flatListRef = useRef<FlatList>(null);
-
-  useEffect(() => {
-    loadApiKey();
-  }, []);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -260,7 +205,7 @@ export default function AssistantScreen() {
 
     setLoading(true);
     try {
-      const reply = await sendAssistantMessage(text, messages, apiKey);
+      const reply = await sendAssistantMessage(text, messages);
       const botMsg: ChatMessage = {
         role: 'assistant',
         content: reply,
@@ -286,30 +231,17 @@ export default function AssistantScreen() {
     } catch (err: any) {
       const errMsg: ChatMessage = {
         role: 'assistant',
-        content: `Error: ${err.message}\n\nPlease check your API key and try again.`,
+        content: `Error: ${err.message}`,
         timestamp: new Date().toISOString(),
       };
       addMessage(errMsg);
     }
     setLoading(false);
-  }, [input, isLoading, mode, messages, apiKey, user, conversationId]);
+  }, [input, isLoading, mode, messages, user, conversationId]);
 
   const handleSuggestion = (text: string) => {
     setInput(text);
   };
-
-  if (!apiKey) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ApiKeyModal
-          visible={true}
-          onSave={async (key) => {
-            await setApiKey(key);
-          }}
-        />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -677,61 +609,6 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.4,
-  },
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.bgPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 20,
-    padding: 28,
-    width: '100%',
-    maxWidth: 400,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  modalDesc: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  apiKeyInput: {
-    backgroundColor: colors.bgTertiary,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 15,
-    color: colors.textPrimary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 16,
-  },
-  saveButton: {
-    backgroundColor: colors.accentPrimary,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-  },
-  saveButtonDisabled: {
-    opacity: 0.4,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.bgPrimary,
   },
   // Quick Lookup
   lookupContainer: {

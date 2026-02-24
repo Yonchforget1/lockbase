@@ -16,45 +16,11 @@ export interface Conversation {
   updated_at: string;
 }
 
-// Locksmith system prompt for Claude
-const SYSTEM_PROMPT = `You are an expert automotive and residential locksmith assistant integrated into the LockBase app. You help locksmiths on the job with step-by-step guidance.
+const EDGE_FUNCTION_URL =
+  'https://eptnkprttskodgnfeasg.supabase.co/functions/v1/chat';
 
-When given a job or vehicle/lock query:
-1. Identify the exact vehicle year/make/model or lock brand/model
-2. Use the provided database records for accurate specs
-3. Provide a clear step-by-step guide including:
-
-FOR AUTOMOTIVE JOBS:
-- Key blank needed (e.g., HON66, TOY43)
-- Lishi tool for picking/decoding (e.g., Lishi HON66)
-- Transponder type and chip (e.g., Hitag Pro, 47 chip)
-- Remote frequency (e.g., 315 MHz, 433 MHz)
-- FCC ID for the remote
-- Emergency key blank
-- Battery type for the fob
-- Whether OBD programming works or if EEPROM/soldering is needed
-- Which programmer to use (Autel IM608, Smart Pro, VVDI, etc.)
-- Step-by-step programming instructions
-- Whether PIN code is required
-- Whether all keys must be present
-- Estimated job time and suggested pricing range
-
-FOR RESIDENTIAL JOBS:
-- Lock brand and model details
-- Keyway type (e.g., SC1, KW1, C123)
-- Number of pins and security pin types
-- Recommended pick tools and techniques
-- Bypass methods if applicable
-- Rekey procedures and pinning specs
-- Key blank number
-- ANSI grade and security rating
-
-Always be practical and job-focused. Use industry terminology that locksmiths understand. If the database doesn't have specific info, supplement with your knowledge but note what's from the database vs general knowledge.
-
-Format your responses clearly with headers and bullet points. Keep it concise but thorough - locksmiths are busy on the job.`;
-
-// Search the database for relevant vehicle/lock info
-async function searchDatabase(query: string) {
+// Quick lookup - just get specs without AI (stays client-side)
+export async function quickLookup(query: string) {
   const searchTerms = query.toLowerCase();
 
   // Try automotive search
@@ -89,134 +55,54 @@ async function searchDatabase(query: string) {
     if (data) yearSpecificKeys = data;
   }
 
+  const allAutoKeys = [
+    ...yearSpecificKeys,
+    ...(autoKeys || []).filter(
+      (k) => !yearSpecificKeys.find((yk: any) => yk.id === k.id)
+    ),
+  ];
+
   return {
-    autoKeys: autoKeys || [],
-    yearSpecificKeys,
+    autoKeys: allAutoKeys,
     locks: locks || [],
   };
 }
 
-// Format database records for the AI context
-function formatDatabaseContext(dbResults: Awaited<ReturnType<typeof searchDatabase>>): string {
-  const parts: string[] = [];
-
-  const allAutoKeys = [
-    ...dbResults.yearSpecificKeys,
-    ...dbResults.autoKeys.filter(
-      (k) => !dbResults.yearSpecificKeys.find((yk: any) => yk.id === k.id)
-    ),
-  ];
-
-  if (allAutoKeys.length > 0) {
-    parts.push('=== DATABASE RECORDS: AUTOMOTIVE KEYS ===');
-    for (const key of allAutoKeys) {
-      parts.push(`
-Vehicle: ${key.model_name} (${key.year_start}-${key.year_end})
-Key Blank: ${key.key_blank}
-Key Type: ${key.key_type}
-Transponder: ${key.transponder_type || 'N/A'}
-Chip: ${key.chip_type || 'N/A'}
-Frequency: ${key.remote_frequency || 'N/A'}
-FCC ID: ${key.fcc_id || 'N/A'}
-IC Number: ${key.ic_number || 'N/A'}
-Emergency Blank: ${key.emergency_key_blank || 'N/A'}
-Battery: ${key.battery_type || 'N/A'}
-Buttons: ${key.buttons || 'N/A'}
-Lishi Tool: ${key.lishi_tool || 'N/A'}
-Test Key: ${key.test_key_blank || 'N/A'}
-OBD Programmable: ${key.obd_programmable ? 'Yes' : 'No'}
-PIN Required: ${key.pin_code_required ? 'Yes' : 'No'}
-Programming Notes: ${key.programming_notes || 'N/A'}
----`);
-    }
-  }
-
-  if (dbResults.locks.length > 0) {
-    parts.push('\n=== DATABASE RECORDS: RESIDENTIAL LOCKS ===');
-    for (const lock of dbResults.locks) {
-      const mfrName = (lock as any).manufacturers?.name || 'Unknown';
-      parts.push(`
-Lock: ${mfrName} ${lock.name}
-Type: ${lock.lock_type}
-Keyway: ${lock.keyway}
-Pins: ${lock.num_pins}
-Security Pins: ${lock.security_pins || 'None'}
-ANSI Grade: ${lock.ansi_grade || 'N/A'}
-Bump Resistant: ${lock.bump_resistant ? 'Yes' : 'No'}
-Pick Resistant: ${lock.pick_resistant ? 'Yes' : 'No'}
-Drill Resistant: ${lock.drill_resistant ? 'Yes' : 'No'}
-Smart Features: ${lock.smart_features || 'None'}
----`);
-    }
-  }
-
-  return parts.join('\n');
-}
-
-// Quick lookup - just get specs without AI
-export async function quickLookup(query: string) {
-  const results = await searchDatabase(query);
-  return {
-    autoKeys: [
-      ...results.yearSpecificKeys,
-      ...results.autoKeys.filter(
-        (k) => !results.yearSpecificKeys.find((yk: any) => yk.id === k.id)
-      ),
-    ],
-    locks: results.locks,
-  };
-}
-
-// Send a message to the AI assistant
+// Send a message to the AI assistant via Edge Function
 export async function sendAssistantMessage(
   userMessage: string,
-  conversationHistory: ChatMessage[],
-  apiKey: string
+  conversationHistory: ChatMessage[]
 ): Promise<string> {
-  // Search database for relevant context
-  const dbResults = await searchDatabase(userMessage);
-  const dbContext = formatDatabaseContext(dbResults);
-
-  // Build messages for Claude
-  const messages = conversationHistory.map((msg) => ({
-    role: msg.role as 'user' | 'assistant',
-    content: msg.content,
-  }));
-
-  // Add database context to the current message
-  let enrichedMessage = userMessage;
-  if (dbContext.trim()) {
-    enrichedMessage = `${userMessage}\n\n[The following data was found in our database for this query:]\n${dbContext}`;
-  }
-
-  messages.push({ role: 'user', content: enrichedMessage });
+  // Use session token if logged in, otherwise use anon key
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token =
+    session?.access_token ||
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwdG5rcHJ0dHNrb2RnbmZlYXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4OTk0OTEsImV4cCI6MjA4NzQ3NTQ5MX0.hvBkzBs139gRyaJL2zQkdtUzUdk9GYZH0wnCYR0F0ms';
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(EDGE_FUNCTION_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages,
+        message: userMessage,
+        conversationHistory,
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`API error ${response.status}: ${errText}`);
+      const errData = await response
+        .json()
+        .catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errData.error || `Server error ${response.status}`);
     }
 
     const data = await response.json();
-    const assistantReply =
-      data.content?.[0]?.text || 'Sorry, I could not generate a response.';
-    return assistantReply;
+    return data.reply;
   } catch (error: any) {
     throw new Error(`Assistant error: ${error.message}`);
   }
