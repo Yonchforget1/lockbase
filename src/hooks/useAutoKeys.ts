@@ -4,7 +4,11 @@ import { automotiveService } from '../services/automotive.service';
 export function useManufacturers() {
   return useQuery({
     queryKey: ['manufacturers', 'automotive'],
-    queryFn: automotiveService.getManufacturers,
+    queryFn: async () => {
+      const data = await automotiveService.getManufacturers();
+      console.log('[useManufacturers]', data?.length, 'results');
+      return data;
+    },
   });
 }
 
@@ -21,6 +25,14 @@ export function useVehicleModels(manufacturerId: string) {
     queryKey: ['models', manufacturerId],
     queryFn: () => automotiveService.getModels(manufacturerId),
     enabled: !!manufacturerId,
+  });
+}
+
+export function useManufacturerWithModels(slug: string) {
+  return useQuery({
+    queryKey: ['manufacturer-models', slug],
+    queryFn: () => automotiveService.getManufacturerWithModels(slug),
+    enabled: !!slug,
   });
 }
 

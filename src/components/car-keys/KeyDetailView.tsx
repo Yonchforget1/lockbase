@@ -30,7 +30,12 @@ export function KeyDetailView({ keyData }: KeyDetailViewProps) {
     keyData.chip_type && { label: 'Chip Type', value: keyData.chip_type, icon: 'chip' },
     keyData.remote_frequency && { label: 'Remote Frequency', value: keyData.remote_frequency, icon: 'signal' },
     keyData.fcc_id && { label: 'FCC ID', value: keyData.fcc_id, icon: 'certificate' },
+    keyData.ic_number && { label: 'IC Number', value: keyData.ic_number, icon: 'card-account-details' },
     keyData.emergency_key_blank && { label: 'Emergency Blank', value: keyData.emergency_key_blank, icon: 'key-alert' },
+    keyData.test_key_blank && { label: 'Test Key', value: keyData.test_key_blank, icon: 'key-plus' },
+    keyData.battery_type && { label: 'Battery', value: keyData.battery_type, icon: 'battery' },
+    keyData.buttons && { label: 'Buttons', value: keyData.buttons, icon: 'gesture-tap-button' },
+    keyData.lishi_tool && { label: 'Lishi Tool', value: keyData.lishi_tool, icon: 'tools' },
   ].filter(Boolean) as { label: string; value: string; icon: string }[];
 
   return (

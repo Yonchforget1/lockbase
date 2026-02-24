@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, View, StyleSheet, ViewStyle } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { colors } from '../../lib/theme';
 
 interface SkeletonProps {
@@ -10,28 +10,15 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ width = '100%', height = 20, borderRadius = 8, style }: SkeletonProps) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [opacity]);
-
   return (
-    <Animated.View
+    <View
       style={[
         {
           width: width as any,
           height,
           borderRadius,
           backgroundColor: colors.bgTertiary,
-          opacity,
+          opacity: 0.5,
         },
         style,
       ]}
@@ -51,7 +38,7 @@ export function SkeletonCard() {
 
 export function SkeletonList({ count = 5 }: { count?: number }) {
   return (
-    <View>
+    <View style={styles.listContainer}>
       {Array.from({ length: count }).map((_, i) => (
         <View key={i} style={styles.listItem}>
           <Skeleton width={40} height={40} borderRadius={20} />
@@ -74,11 +61,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: 12,
   },
+  listContainer: {
+    paddingHorizontal: 16,
+  },
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
     gap: 12,
   },
   listContent: {

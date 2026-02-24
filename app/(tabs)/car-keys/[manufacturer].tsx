@@ -6,13 +6,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../../src/lib/theme';
 import { SkeletonList } from '../../../src/components/ui/SkeletonLoader';
 import { EmptyState } from '../../../src/components/ui/EmptyState';
-import { useManufacturer, useVehicleModels } from '../../../src/hooks/useAutoKeys';
+import { useManufacturerWithModels } from '../../../src/hooks/useAutoKeys';
 
 export default function ManufacturerScreen() {
   const { manufacturer: slug } = useLocalSearchParams<{ manufacturer: string }>();
   const router = useRouter();
-  const { data: manufacturer } = useManufacturer(slug);
-  const { data: models, isLoading } = useVehicleModels(manufacturer?.id ?? '');
+  const { data, isLoading, error } = useManufacturerWithModels(slug ?? '');
+
+  const manufacturer = data?.manufacturer;
+  const models = data?.models;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -28,6 +30,8 @@ export default function ManufacturerScreen() {
 
       {isLoading ? (
         <SkeletonList count={8} />
+      ) : error ? (
+        <EmptyState icon="alert-circle" title="Error" message="Failed to load models." />
       ) : !models?.length ? (
         <EmptyState icon="car" title="No Models" message="No vehicle models available for this manufacturer." />
       ) : (
@@ -38,7 +42,7 @@ export default function ManufacturerScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.listItem}
-              onPress={() => router.push(`/(tabs)/car-keys/${slug}?modelId=${item.id}&modelName=${item.name}` as any)}
+              onPress={() => router.push({ pathname: `/(tabs)/car-keys/model`, params: { modelId: item.id, modelName: item.name, manufacturer: slug } } as any)}
             >
               <View style={styles.itemLeft}>
                 <View style={styles.itemIcon}>

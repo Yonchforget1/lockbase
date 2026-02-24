@@ -7,13 +7,15 @@ import { colors } from '../../../src/lib/theme';
 import { Badge } from '../../../src/components/ui/Badge';
 import { SkeletonList } from '../../../src/components/ui/SkeletonLoader';
 import { EmptyState } from '../../../src/components/ui/EmptyState';
-import { useResidentialBrand, useLocks } from '../../../src/hooks/useLocks';
+import { useBrandWithLocks } from '../../../src/hooks/useLocks';
 
 export default function BrandScreen() {
   const { brand: slug } = useLocalSearchParams<{ brand: string }>();
   const router = useRouter();
-  const { data: brand } = useResidentialBrand(slug);
-  const { data: locks, isLoading } = useLocks(brand?.id ?? '');
+  const { data, isLoading, error } = useBrandWithLocks(slug ?? '');
+
+  const brand = data?.brand;
+  const locks = data?.locks;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -29,6 +31,8 @@ export default function BrandScreen() {
 
       {isLoading ? (
         <SkeletonList count={6} />
+      ) : error ? (
+        <EmptyState icon="alert-circle" title="Error" message="Failed to load locks." />
       ) : !locks?.length ? (
         <EmptyState icon="lock" title="No Locks" message="No lock data available for this brand." />
       ) : (
@@ -39,7 +43,7 @@ export default function BrandScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.listItem}
-              onPress={() => router.push(`/(tabs)/house-locks/${slug}?lockId=${item.id}&lockName=${item.name}` as any)}
+              onPress={() => router.push({ pathname: `/(tabs)/house-locks/lock`, params: { lockId: item.id, lockName: item.name, brand: slug } } as any)}
             >
               <View style={styles.itemLeft}>
                 <View style={styles.itemIcon}>

@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Animated, TouchableWithoutFeedback, StyleSheet, ViewStyle } from 'react-native';
+import React from 'react';
+import { TouchableOpacity, View, StyleSheet, ViewStyle } from 'react-native';
 import { colors } from '../../lib/theme';
 
 interface CardProps {
@@ -9,40 +9,18 @@ interface CardProps {
 }
 
 export function Card({ children, onPress, style }: CardProps) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.98,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
-    }).start();
-  };
-
   if (!onPress) {
-    return <Animated.View style={[styles.card, style]}>{children}</Animated.View>;
+    return <View style={[styles.card, style]}>{children}</View>;
   }
 
   return (
-    <TouchableWithoutFeedback
+    <TouchableOpacity
       onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      activeOpacity={0.7}
+      style={[styles.card, style]}
     >
-      <Animated.View style={[styles.card, style, { transform: [{ scale: scaleAnim }] }]}>
-        {children}
-      </Animated.View>
-    </TouchableWithoutFeedback>
+      {children}
+    </TouchableOpacity>
   );
 }
 

@@ -31,6 +31,24 @@ export const residentialService = {
     return data;
   },
 
+  async getBrandWithLocks(slug: string) {
+    const { data: brand, error: brandError } = await supabase
+      .from('manufacturers')
+      .select('*')
+      .eq('slug', slug)
+      .single();
+    if (brandError) throw brandError;
+
+    const { data: locks, error: locksError } = await supabase
+      .from('residential_locks')
+      .select('*')
+      .eq('manufacturer_id', brand.id)
+      .order('name');
+    if (locksError) throw locksError;
+
+    return { brand, locks };
+  },
+
   async getLockDetail(lockId: string) {
     const { data, error } = await supabase
       .from('residential_locks')

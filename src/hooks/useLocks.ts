@@ -24,6 +24,14 @@ export function useLocks(manufacturerId: string) {
   });
 }
 
+export function useBrandWithLocks(slug: string) {
+  return useQuery({
+    queryKey: ['brand-locks', slug],
+    queryFn: () => residentialService.getBrandWithLocks(slug),
+    enabled: !!slug,
+  });
+}
+
 export function useLockDetail(lockId: string) {
   return useQuery({
     queryKey: ['lock', lockId],

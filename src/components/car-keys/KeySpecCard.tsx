@@ -53,6 +53,24 @@ export function KeySpecCard({ keyData, onPress }: KeySpecCardProps) {
             <Text style={styles.specValue}>{keyData.remote_frequency}</Text>
           </View>
         )}
+        {keyData.battery_type && (
+          <View style={styles.specRow}>
+            <Text style={styles.specLabel}>BATTERY</Text>
+            <Text style={styles.specValue}>{keyData.battery_type}</Text>
+          </View>
+        )}
+        {keyData.buttons && (
+          <View style={styles.specRow}>
+            <Text style={styles.specLabel}>BUTTONS</Text>
+            <Text style={styles.specValue}>{keyData.buttons}</Text>
+          </View>
+        )}
+        {keyData.lishi_tool && (
+          <View style={styles.specRow}>
+            <Text style={styles.specLabel}>LISHI TOOL</Text>
+            <Text style={styles.specValue}>{keyData.lishi_tool}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.flags}>
