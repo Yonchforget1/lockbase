@@ -39,3 +39,19 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Supabase temp/audit
+supabase/.temp/
+supabase/audit/
+
+# Scraping logs and screenshots
+scrape_log.txt
+screenshots/
+
+# Environment and secrets
+.env
+.env.local
+.env.production
+
+# Seed runner
+fix_and_run_seed.mjs
