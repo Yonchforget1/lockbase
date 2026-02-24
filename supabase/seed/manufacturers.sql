@@ -64,7 +64,8 @@ INSERT INTO public.manufacturers (name, slug, type, country) VALUES
 ('Kenworth', 'kenworth', 'automotive', 'USA'),
 ('Peterbilt', 'peterbilt', 'automotive', 'USA'),
 ('International', 'international', 'automotive', 'USA'),
-('Mack', 'mack', 'automotive', 'USA');
+('Mack', 'mack', 'automotive', 'USA')
+ON CONFLICT (slug) DO NOTHING;
 
 -- Residential Lock Manufacturers (11+)
 INSERT INTO public.manufacturers (name, slug, type, country) VALUES
@@ -80,4 +81,5 @@ INSERT INTO public.manufacturers (name, slug, type, country) VALUES
 ('Corbin Russwin', 'corbin-russwin', 'residential', 'USA'),
 ('Emtek', 'emtek', 'residential', 'USA'),
 ('Weiser', 'weiser', 'residential', 'Canada'),
-('Brinks', 'brinks', 'residential', 'USA');
+('Brinks', 'brinks', 'residential', 'USA')
+ON CONFLICT (slug) DO NOTHING;
