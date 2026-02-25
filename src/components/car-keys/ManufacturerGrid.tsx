@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../lib/theme';
 import type { Manufacturer } from '../../types/database';
@@ -10,6 +10,9 @@ interface ManufacturerGridProps {
 }
 
 function ManufacturerItem({ item, onSelect }: { item: Manufacturer; onSelect: (m: Manufacturer) => void }) {
+  const [imgError, setImgError] = useState(false);
+  const hasLogo = item.logo_url && !imgError;
+
   return (
     <TouchableOpacity
       style={styles.card}
@@ -17,7 +20,16 @@ function ManufacturerItem({ item, onSelect }: { item: Manufacturer; onSelect: (m
       activeOpacity={0.7}
     >
       <View style={styles.iconContainer}>
-        <MaterialCommunityIcons name="car" size={28} color={colors.accentPrimary} />
+        {hasLogo ? (
+          <Image
+            source={{ uri: item.logo_url! }}
+            style={styles.logo}
+            resizeMode="contain"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <MaterialCommunityIcons name="car" size={28} color={colors.accentPrimary} />
+        )}
       </View>
       <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
       {item.country && <Text style={styles.country}>{item.country}</Text>}
@@ -66,6 +78,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+    overflow: 'hidden',
+  },
+  logo: {
+    width: 36,
+    height: 36,
   },
   name: {
     fontSize: 13,

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Badge } from '../ui/Badge';
 import { colors } from '../../lib/theme';
@@ -22,6 +22,9 @@ function SpecItem({ label, value, icon }: { label: string; value: string; icon: 
 }
 
 export function KeyDetailView({ keyData }: KeyDetailViewProps) {
+  const [imgError, setImgError] = useState(false);
+  const hasImage = keyData.image_url && !imgError;
+
   const specs = [
     { label: 'Key Blank', value: keyData.key_blank, icon: 'key-variant' },
     { label: 'Year Range', value: `${keyData.year_start} – ${keyData.year_end}`, icon: 'calendar-range' },
@@ -41,9 +44,18 @@ export function KeyDetailView({ keyData }: KeyDetailViewProps) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <MaterialCommunityIcons name="key-variant" size={56} color={colors.accentPrimary} />
-        </View>
+        {hasImage ? (
+          <Image
+            source={{ uri: keyData.image_url! }}
+            style={styles.heroImage}
+            resizeMode="contain"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <View style={styles.heroIcon}>
+            <MaterialCommunityIcons name="key-variant" size={56} color={colors.accentPrimary} />
+          </View>
+        )}
         <Text style={styles.heroTitle}>{keyData.model_name}</Text>
         <Text style={styles.heroSubtitle}>{keyData.key_blank}</Text>
         <View style={styles.badges}>
@@ -81,6 +93,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  heroImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 16,
+    marginBottom: 16,
+    backgroundColor: '#fff',
   },
   heroIcon: {
     width: 100,

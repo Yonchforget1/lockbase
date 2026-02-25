@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -19,11 +19,23 @@ const keyTypeVariant = {
 };
 
 export function KeySpecCard({ keyData, onPress }: KeySpecCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const hasImage = keyData.image_url && !imgError;
+
   return (
     <Card onPress={onPress} style={styles.container}>
       <View style={styles.header}>
         <View style={styles.iconWrap}>
-          <MaterialCommunityIcons name="key-variant" size={22} color={colors.accentPrimary} />
+          {hasImage ? (
+            <Image
+              source={{ uri: keyData.image_url! }}
+              style={styles.keyThumb}
+              resizeMode="contain"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <MaterialCommunityIcons name="key-variant" size={22} color={colors.accentPrimary} />
+          )}
         </View>
         <View style={styles.headerText}>
           <Text style={styles.title}>{keyData.key_blank}</Text>
@@ -108,6 +120,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  keyThumb: {
+    width: 36,
+    height: 36,
   },
   headerText: {
     flex: 1,
