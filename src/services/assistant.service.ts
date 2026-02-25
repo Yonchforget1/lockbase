@@ -32,9 +32,10 @@ const EDGE_FUNCTION_URL =
 
 // Quick lookup - just get specs without AI (stays client-side)
 export async function quickLookup(query: string) {
-  const searchTerms = query.toLowerCase();
+  const searchTerms = query.toLowerCase().trim();
+  const words = searchTerms.split(/\s+/).filter(Boolean);
 
-  // Try automotive search
+  // Try automotive search - full query match
   const { data: autoKeys } = await supabase
     .from('automotive_keys')
     .select('*')
@@ -43,14 +44,63 @@ export async function quickLookup(query: string) {
     )
     .limit(10) as { data: AutomotiveKey[] | null };
 
-  // Try residential search
+  // Try residential search - full query match on lock name, keyway, or slug
   const { data: locks } = await supabase
     .from('residential_locks')
     .select('*, manufacturers(name)')
-    .or(`name.ilike.%${searchTerms}%,keyway.ilike.%${searchTerms}%`)
+    .or(`name.ilike.%${searchTerms}%,keyway.ilike.%${searchTerms}%,slug.ilike.%${searchTerms}%`)
     .limit(10) as { data: (ResidentialLock & { manufacturers: { name: string } | null })[] | null };
 
-  // Also try parsing year/make/model patterns
+  // Also search locks by individual words (handles "Schlage B60N" -> brand + model)
+  let wordMatchLocks: (ResidentialLock & { manufacturers: { name: string } | null })[] = [];
+  if (words.length > 1) {
+    // Search each word individually against lock name and manufacturer
+    for (const word of words) {
+      if (word.length < 2) continue;
+      // Search by lock name/slug
+      const { data: nameLocks } = await supabase
+        .from('residential_locks')
+        .select('*, manufacturers(name)')
+        .or(`name.ilike.%${word}%,slug.ilike.%${word}%`)
+        .limit(10) as { data: (ResidentialLock & { manufacturers: { name: string } | null })[] | null };
+      if (nameLocks) {
+        // Filter results that also match other words (in name or manufacturer)
+        const filtered = nameLocks.filter((lock) => {
+          const lockText = `${lock.manufacturers?.name || ''} ${lock.name} ${(lock as any).slug || ''}`.toLowerCase();
+          return words.every((w) => lockText.includes(w));
+        });
+        wordMatchLocks.push(...filtered);
+      }
+    }
+    // Deduplicate
+    const seen = new Set<string>();
+    wordMatchLocks = wordMatchLocks.filter((l) => {
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    });
+  } else if (words.length === 1) {
+    // Single word - also try matching manufacturer name
+    const { data: mfrLocks } = await supabase
+      .from('residential_locks')
+      .select('*, manufacturers(name)')
+      .limit(50) as { data: (ResidentialLock & { manufacturers: { name: string } | null })[] | null };
+    if (mfrLocks) {
+      wordMatchLocks = mfrLocks.filter((lock) => {
+        const lockText = `${lock.manufacturers?.name || ''} ${lock.name} ${(lock as any).slug || ''}`.toLowerCase();
+        return lockText.includes(searchTerms);
+      });
+    }
+  }
+
+  // Merge lock results, deduplicating
+  const lockIds = new Set((locks || []).map((l) => l.id));
+  const allLocks = [
+    ...(locks || []),
+    ...wordMatchLocks.filter((l) => !lockIds.has(l.id)),
+  ];
+
+  // Also try parsing year/make/model patterns for automotive
   const yearMatch = searchTerms.match(/(\d{4})\s+(\w+)\s+(.+)/);
   let yearSpecificKeys: AutomotiveKey[] = [];
   if (yearMatch) {
@@ -75,7 +125,7 @@ export async function quickLookup(query: string) {
 
   return {
     autoKeys: allAutoKeys,
-    locks: locks || [],
+    locks: allLocks,
   };
 }
 
