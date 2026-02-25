@@ -41,6 +41,151 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_THUMB_SIZE = 160;
 const ANNOTATED_IMAGE_WIDTH = SCREEN_WIDTH * 0.72; // fits inside bubble
 
+// ─── Markdown → Clean Formatted Text ──────────────────────────────
+// Strips raw markdown syntax and renders clean styled text segments
+interface TextSegment {
+  text: string;
+  bold?: boolean;
+  header?: boolean;
+  bullet?: boolean;
+  numbered?: string; // e.g. "1."
+}
+
+function parseMarkdownToSegments(raw: string): TextSegment[][] {
+  const lines = raw.split('\n');
+  const result: TextSegment[][] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      result.push([{ text: '' }]); // blank line
+      continue;
+    }
+
+    // Headers: ## or ### → bold header text
+    const headerMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (headerMatch) {
+      result.push([{ text: headerMatch[1].replace(/\*\*/g, ''), header: true }]);
+      continue;
+    }
+
+    // Bullet points: - text or * text
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      result.push(parseBoldSegments(bulletMatch[1], true));
+      continue;
+    }
+
+    // Numbered lists: 1. text, 2. text, etc.
+    const numMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (numMatch) {
+      const segs = parseBoldSegments(numMatch[2]);
+      segs.unshift({ text: `${numMatch[1]}. `, bold: true });
+      result.push(segs);
+      continue;
+    }
+
+    // Regular line — parse bold segments
+    result.push(parseBoldSegments(trimmed));
+  }
+
+  return result;
+}
+
+function parseBoldSegments(text: string, bullet?: boolean): TextSegment[] {
+  const segments: TextSegment[] = [];
+  // Split on **bold** markers
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  for (let i = 0; i < parts.length; i++) {
+    if (!parts[i]) continue;
+    if (i % 2 === 1) {
+      // Odd indices are bold content
+      segments.push({ text: parts[i], bold: true, bullet: bullet && i === 0 });
+    } else {
+      // Strip any remaining single * (italic) markers
+      segments.push({ text: parts[i].replace(/\*/g, ''), bullet: bullet && i === 0 });
+    }
+  }
+  if (bullet && segments.length > 0) {
+    segments[0] = { ...segments[0], bullet: true };
+  }
+  return segments;
+}
+
+function FormattedMessage({
+  text,
+  isUser,
+}: {
+  text: string;
+  isUser: boolean;
+}) {
+  if (isUser) {
+    return (
+      <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
+        {text}
+      </Text>
+    );
+  }
+
+  const lines = parseMarkdownToSegments(text);
+
+  // Collapse multiple blank lines into max 1
+  const collapsed: TextSegment[][] = [];
+  let prevBlank = false;
+  for (const line of lines) {
+    const isBlank = line.length === 1 && line[0].text === '';
+    if (isBlank) {
+      if (!prevBlank) collapsed.push(line);
+      prevBlank = true;
+    } else {
+      collapsed.push(line);
+      prevBlank = false;
+    }
+  }
+
+  return (
+    <View style={styles.formattedContainer}>
+      {collapsed.map((segments, lineIdx) => {
+        const isBlank = segments.length === 1 && segments[0].text === '';
+        if (isBlank) {
+          return <View key={lineIdx} style={styles.formattedSpacer} />;
+        }
+
+        const isHeader = segments.some((s) => s.header);
+        const isBullet = segments.some((s) => s.bullet);
+
+        return (
+          <View
+            key={lineIdx}
+            style={[
+              styles.formattedLine,
+              isHeader && styles.formattedHeaderLine,
+              isBullet && styles.formattedBulletLine,
+            ]}
+          >
+            {isBullet && (
+              <Text style={styles.formattedBulletDot}>{'\u2022'} </Text>
+            )}
+            <Text style={[styles.bubbleText, isHeader && styles.formattedHeaderText]}>
+              {segments.map((seg, segIdx) => (
+                <Text
+                  key={segIdx}
+                  style={[
+                    seg.bold && styles.formattedBold,
+                    isHeader && styles.formattedHeaderText,
+                  ]}
+                >
+                  {seg.text}
+                </Text>
+              ))}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── Annotated Image Component ────────────────────────────────────
 // Renders the user's original photo with SVG annotation overlays
 function AnnotatedImage({
@@ -433,9 +578,7 @@ function MessageBubble({
         )}
 
         {/* Text content */}
-        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-          {displayText}
-        </Text>
+        <FormattedMessage text={displayText} isUser={isUser} />
 
         {/* Reference images (text-only cards, no broken images) */}
         {!isUser && referenceImages.length > 0 && (
@@ -1140,6 +1283,41 @@ const styles = StyleSheet.create({
   bubbleTextUser: {
     color: colors.bgPrimary,
   },
+
+  // ─── Formatted text (markdown-stripped) ───────────────────────
+  formattedContainer: {
+    gap: 2,
+  },
+  formattedSpacer: {
+    height: 8,
+  },
+  formattedLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  formattedHeaderLine: {
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  formattedHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accentPrimary,
+    lineHeight: 22,
+  },
+  formattedBulletLine: {
+    flexDirection: 'row',
+    paddingLeft: 4,
+  },
+  formattedBulletDot: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
+  formattedBold: {
+    fontWeight: '700',
+  },
+
   bubbleTime: {
     fontSize: 10,
     color: colors.textTertiary,

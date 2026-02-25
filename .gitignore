@@ -55,3 +55,14 @@ screenshots/
 
 # Seed runner
 fix_and_run_seed.mjs
+_check_*.mjs
+_fix_*.mjs
+_query_*.mjs
+_tmp_*.mjs
+_verify_*.mjs
+batch4_log.txt
+check_constraint.mjs
+check_models.mjs
+query_*.mjs
+verify_results.mjs
+test-fmt-*.png
