@@ -33,7 +33,17 @@ export interface AnnotationLabel {
   step?: number;
 }
 
-export type Annotation = AnnotationCircle | AnnotationArrow | AnnotationLabel;
+export interface AnnotationHighlight {
+  type: 'highlight';
+  x: number;       // center x percentage 0-100
+  y: number;       // center y percentage 0-100
+  radius: number;  // percentage of image width
+  color: string;
+  label?: string;
+  step?: number;
+}
+
+export type Annotation = AnnotationCircle | AnnotationArrow | AnnotationLabel | AnnotationHighlight;
 
 export interface ReferenceImage {
   description: string;
@@ -119,6 +129,12 @@ function isValidAnnotation(a: any): a is Annotation {
       return (
         typeof a.x === 'number' && typeof a.y === 'number' &&
         typeof a.text === 'string' &&
+        a.x >= 0 && a.x <= 100 && a.y >= 0 && a.y <= 100
+      );
+    case 'highlight':
+      return (
+        typeof a.x === 'number' && typeof a.y === 'number' &&
+        typeof a.radius === 'number' &&
         a.x >= 0 && a.x <= 100 && a.y >= 0 && a.y <= 100
       );
     default:

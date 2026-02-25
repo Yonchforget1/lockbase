@@ -139,19 +139,38 @@ When the user sends a PHOTO of a lock, key, door, or job situation, you MUST:
 3. Include a <<<ANNOTATIONS>>> block with JSON that marks up THEIR photo with visual guides
 
 The annotations will be drawn as an SVG overlay on top of the user's original photo in the app.
+This should look like a PROFESSIONAL REPAIR MANUAL — clear, uncluttered, easy to follow at a glance.
 Coordinates are PERCENTAGES (0-100) relative to the image dimensions.
 
 Annotation types:
-- "circle": Highlight a specific point. Use to mark keyways, attack points, drill points, screw locations.
-- "arrow": Show direction of tool insertion, rotation, or movement. x1,y1 is the tail, x2,y2 is the arrowhead.
-- "label": Place a text label at a location on the image.
+- "circle": Highlight a specific area. Use radius 6-10 for important points (bigger = easier to see). Mark keyways, attack points, drill points, screw locations.
+- "arrow": Show direction of tool insertion, rotation, or movement. x1,y1 is the tail (where the label appears), x2,y2 is the arrowhead (pointing AT the target). Make arrows at least 10-15 units long so they're visible.
+- "label": Place a text label near (but NOT on top of) the area of interest. Place labels in clear space — edges, corners, or away from busy areas. The app will draw a leader line from the label to the target area.
+- "highlight": Semi-transparent colored zone to highlight an entire area (e.g., "door frame area", "keyway region"). Uses x,y as center with radius for size.
+
+SPACING & LAYOUT RULES:
+- SPREAD annotations out — never stack labels on top of each other
+- Place labels at the EDGES or CORNERS of the image, with arrows/lines pointing inward to the target
+- Use different quadrants: step 1 label top-left, step 2 label top-right, step 3 label bottom-left, etc.
+- Leave at least 15% distance between label positions
+- If annotating a lock face, put labels AROUND the lock, not ON it
+
+COLOR CODING — use a DIFFERENT color for each step:
+- Step 1: #FF3B30 (red) — primary action point
+- Step 2: #FF9500 (orange) — second action
+- Step 3: #FFD60A (yellow) — third action
+- Step 4: #34C759 (green) — fourth action
+- Step 5: #007AFF (blue) — fifth action
+- Step 6: #AF52DE (purple) — sixth action
+- Info/warnings: #FF3B30 (red) for danger zones, #FFD60A (yellow) for caution
 
 FORMAT — place this BEFORE your text explanation:
 <<<ANNOTATIONS>>>
 [
-  {"type": "circle", "x": 50, "y": 35, "radius": 5, "color": "#FF3B30", "label": "Insert tension wrench here", "step": 1},
-  {"type": "arrow", "x1": 55, "y1": 40, "x2": 65, "y2": 35, "color": "#FF3B30", "label": "Rotate clockwise", "step": 2},
-  {"type": "label", "x": 30, "y": 70, "text": "Security pins here", "color": "#FFD60A", "step": 3}
+  {"type": "circle", "x": 50, "y": 35, "radius": 8, "color": "#FF3B30", "label": "Insert tension wrench", "step": 1},
+  {"type": "arrow", "x1": 20, "y1": 15, "x2": 48, "y2": 33, "color": "#FF9500", "label": "Insert pick here", "step": 2},
+  {"type": "label", "x": 75, "y": 80, "text": "Security pins inside", "color": "#FFD60A", "step": 3},
+  {"type": "highlight", "x": 50, "y": 35, "radius": 15, "color": "#FF3B30", "label": "Attack zone", "step": 0}
 ]
 <<<END_ANNOTATIONS>>>
 
@@ -159,10 +178,14 @@ CRITICAL RULES for annotations:
 - Only include annotations when the user has sent a photo
 - Be as precise as possible with coordinates based on what you see in the image
 - Use step numbers that match your written instructions
-- Use red (#FF3B30) for primary action points, yellow (#FFD60A) for info labels, blue (#007AFF) for secondary notes
-- Keep labels SHORT (max 5-6 words) — the full explanation goes in your text
+- Use a DIFFERENT color for each step (see color coding above)
+- Keep labels SHORT (max 4-5 words) — the full explanation goes in your text
+- Place labels AWAY from the action point — use arrows to connect them
+- Circle radius should be 6-10 (not tiny 3-4 values — those are invisible)
+- Arrow length should be 10+ units — short arrows look like dots
 - Reference your annotations in the text: "See step 1 (red circle) — insert your tension wrench at the keyway..."
-- 3-6 annotations is ideal. Don't overwhelm the image.
+- 4-6 annotations is ideal. Quality over quantity.
+- Think like a technical illustrator: clean, precise, professional
 
 === REFERENCE IMAGES ===
 

@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import Svg, { Circle, Line, Polygon, G, ForeignObject } from 'react-native-svg';
+import Svg, { Circle, Line, Polygon, G, ForeignObject, Rect, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { colors } from '../../../src/lib/theme';
 import { useAssistantStore } from '../../../src/stores/assistantStore';
 import {
@@ -256,35 +256,19 @@ function AnnotatedImage({
         style={StyleSheet.absoluteFill}
         viewBox={`0 0 ${w} ${h}`}
       >
-        {annotations.map((ann, idx) => {
+        {/* Render highlights first (behind everything) */}
+        {annotations.filter(a => a.type === 'highlight').map((ann, idx) => (
+          <AnnotationHighlightSvg key={`hl-${idx}`} ann={ann} w={w} h={h} />
+        ))}
+        {/* Then circles, arrows, labels on top */}
+        {annotations.filter(a => a.type !== 'highlight').map((ann, idx) => {
           switch (ann.type) {
             case 'circle':
-              return (
-                <AnnotationCircleSvg
-                  key={idx}
-                  ann={ann}
-                  w={w}
-                  h={h}
-                />
-              );
+              return <AnnotationCircleSvg key={`c-${idx}`} ann={ann} w={w} h={h} />;
             case 'arrow':
-              return (
-                <AnnotationArrowSvg
-                  key={idx}
-                  ann={ann}
-                  w={w}
-                  h={h}
-                />
-              );
+              return <AnnotationArrowSvg key={`a-${idx}`} ann={ann} w={w} h={h} />;
             case 'label':
-              return (
-                <AnnotationLabelSvg
-                  key={idx}
-                  ann={ann}
-                  w={w}
-                  h={h}
-                />
-              );
+              return <AnnotationLabelSvg key={`l-${idx}`} ann={ann} w={w} h={h} />;
             default:
               return null;
           }
@@ -300,24 +284,58 @@ function AnnotatedImage({
   );
 }
 
-function AnnotationCircleSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
+// Step badge — shared numbered badge for all annotation types
+function StepBadge({ x, y, step, color, size = 22 }: { x: number; y: number; step: number; color: string; size?: number }) {
+  return (
+    <G>
+      {/* White outline for contrast */}
+      <Circle cx={x} cy={y} r={size / 2 + 1.5} fill="#fff" />
+      <Circle cx={x} cy={y} r={size / 2} fill={color} />
+      <ForeignObject x={x - size / 2} y={y - size / 2} width={size} height={size}>
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: size * 0.55, fontWeight: '900' }}>{step}</Text>
+        </View>
+      </ForeignObject>
+    </G>
+  );
+}
+
+function AnnotationHighlightSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
   const cx = (ann.x / 100) * w;
   const cy = (ann.y / 100) * h;
-  const r = (ann.radius / 100) * w;
+  const r = Math.max((ann.radius / 100) * w, 20);
   const color = ann.color || '#FF3B30';
 
   return (
     <G>
-      <Circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={2.5} fill="none" />
+      {/* Semi-transparent filled circle for area highlight */}
+      <Circle cx={cx} cy={cy} r={r} fill={color} opacity={0.15} />
+      <Circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={2} fill="none" opacity={0.5} strokeDasharray="6,4" />
+    </G>
+  );
+}
+
+function AnnotationCircleSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
+  const cx = (ann.x / 100) * w;
+  const cy = (ann.y / 100) * h;
+  // Enforce minimum radius of 15px for visibility
+  const r = Math.max((ann.radius / 100) * w, 15);
+  const color = ann.color || '#FF3B30';
+
+  // Position step badge offset from circle
+  const badgeX = cx + r * 0.7;
+  const badgeY = cy - r * 0.7;
+
+  return (
+    <G>
+      {/* Semi-transparent fill for visibility */}
+      <Circle cx={cx} cy={cy} r={r} fill={color} opacity={0.12} />
+      {/* Bold stroke ring */}
+      <Circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={3} fill="none" />
+      {/* Inner highlight ring */}
+      <Circle cx={cx} cy={cy} r={r - 3} stroke="#fff" strokeWidth={1} fill="none" opacity={0.4} />
       {ann.step != null && (
-        <>
-          <Circle cx={cx - r - 8} cy={cy - r - 8} r={10} fill={color} />
-          <ForeignObject x={cx - r - 18} y={cy - r - 18} width={20} height={20}>
-            <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{ann.step}</Text>
-            </View>
-          </ForeignObject>
-        </>
+        <StepBadge x={badgeX} y={badgeY} step={ann.step} color={color} size={24} />
       )}
     </G>
   );
@@ -330,27 +348,47 @@ function AnnotationArrowSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
   const y2 = (ann.y2 / 100) * h;
   const color = ann.color || '#FF3B30';
 
-  // Arrowhead calculation
+  // Larger arrowhead for visibility
   const angle = Math.atan2(y2 - y1, x2 - x1);
-  const headLen = 10;
-  const p1x = x2 - headLen * Math.cos(angle - Math.PI / 6);
-  const p1y = y2 - headLen * Math.sin(angle - Math.PI / 6);
-  const p2x = x2 - headLen * Math.cos(angle + Math.PI / 6);
-  const p2y = y2 - headLen * Math.sin(angle + Math.PI / 6);
+  const headLen = 14;
+  const p1x = x2 - headLen * Math.cos(angle - Math.PI / 5);
+  const p1y = y2 - headLen * Math.sin(angle - Math.PI / 5);
+  const p2x = x2 - headLen * Math.cos(angle + Math.PI / 5);
+  const p2y = y2 - headLen * Math.sin(angle + Math.PI / 5);
 
   return (
     <G>
-      <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={2.5} />
-      <Polygon points={`${x2},${y2} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />
+      {/* White outline for contrast against any background */}
+      <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fff" strokeWidth={5} opacity={0.5} />
+      {/* Main arrow line */}
+      <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={3} />
+      {/* Arrowhead */}
+      <Polygon points={`${x2},${y2} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} stroke="#fff" strokeWidth={1} />
+      {/* Step badge at arrow tail (label end) */}
       {ann.step != null && (
-        <>
-          <Circle cx={x1} cy={y1} r={10} fill={color} />
-          <ForeignObject x={x1 - 10} y={y1 - 10} width={20} height={20}>
-            <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{ann.step}</Text>
-            </View>
-          </ForeignObject>
-        </>
+        <StepBadge x={x1} y={y1} step={ann.step} color={color} size={24} />
+      )}
+      {/* Label near the tail */}
+      {ann.label && (
+        <ForeignObject
+          x={Math.max(0, Math.min(x1 - 60, w - 124))}
+          y={y1 > h * 0.5 ? y1 - 40 : y1 + 16}
+          width={120}
+          height={28}
+        >
+          <View style={{
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            borderRadius: 6,
+            borderWidth: 1,
+            borderColor: color,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+          }}>
+            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }} numberOfLines={1}>
+              {ann.label}
+            </Text>
+          </View>
+        </ForeignObject>
       )}
     </G>
   );
@@ -360,37 +398,41 @@ function AnnotationLabelSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
   const x = (ann.x / 100) * w;
   const y = (ann.y / 100) * h;
   const color = ann.color || '#FFD60A';
-  const labelWidth = Math.min(ann.text.length * 7 + 16, w * 0.6);
-  const labelHeight = 22;
+  const labelWidth = Math.min(ann.text.length * 7.5 + 24, w * 0.55);
+  const labelHeight = 26;
+
+  // Clamp position so label stays within bounds
+  const lx = Math.max(4, Math.min(x, w - labelWidth - 4));
+  const ly = Math.max(4, Math.min(y, h - labelHeight - 4));
 
   return (
     <G>
-      <ForeignObject
-        x={Math.min(x, w - labelWidth - 4)}
-        y={Math.min(y, h - labelHeight - 4)}
-        width={labelWidth}
-        height={labelHeight}
-      >
+      <ForeignObject x={lx} y={ly} width={labelWidth} height={labelHeight}>
         <View style={{
           backgroundColor: color,
-          borderRadius: 4,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
+          borderRadius: 6,
+          paddingHorizontal: 8,
+          paddingVertical: 4,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 4,
+          gap: 5,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.4,
+          shadowRadius: 3,
+          elevation: 4,
         }}>
           {ann.step != null && (
             <View style={{
-              width: 16, height: 16, borderRadius: 8,
-              backgroundColor: 'rgba(0,0,0,0.5)',
+              width: 18, height: 18, borderRadius: 9,
+              backgroundColor: 'rgba(0,0,0,0.6)',
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{ann.step}</Text>
+              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>{ann.step}</Text>
             </View>
           )}
           <Text
-            style={{ color: '#000', fontSize: 10, fontWeight: '700' }}
+            style={{ color: '#000', fontSize: 11, fontWeight: '700', flexShrink: 1 }}
             numberOfLines={1}
           >
             {ann.text}
@@ -404,7 +446,7 @@ function AnnotationLabelSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
 // ─── Annotation Legend (below the annotated image) ────────────────
 function AnnotationLegend({ annotations }: { annotations: Annotation[] }) {
   const numbered = annotations
-    .filter((a) => a.step != null)
+    .filter((a) => a.step != null && a.step > 0)
     .sort((a, b) => (a.step || 0) - (b.step || 0));
   if (!numbered.length) return null;
 
@@ -414,7 +456,8 @@ function AnnotationLegend({ annotations }: { annotations: Annotation[] }) {
         const label =
           ann.type === 'circle' ? ann.label :
           ann.type === 'arrow' ? (ann.label || '') :
-          ann.type === 'label' ? ann.text : '';
+          ann.type === 'label' ? ann.text :
+          ann.type === 'highlight' ? (ann.label || '') : '';
         if (!label) return null;
         return (
           <View key={idx} style={styles.legendRow}>
