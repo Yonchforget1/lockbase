@@ -14,6 +14,8 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   images?: ImageAttachment[];
+  /** URI of the user's photo that this assistant response is annotating */
+  sourceImageUri?: string;
 }
 
 export interface Conversation {

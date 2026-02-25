@@ -39,7 +39,54 @@ FOR RESIDENTIAL JOBS:
 
 Always be practical and job-focused. Use industry terminology that locksmiths understand. If the database doesn't have specific info, supplement with your knowledge but note what's from the database vs general knowledge.
 
-Format your responses clearly with headers and bullet points. Keep it concise but thorough - locksmiths are busy on the job.`;
+Format your responses clearly with headers and bullet points. Keep it concise but thorough - locksmiths are busy on the job.
+
+=== PHOTO ANALYSIS & ANNOTATIONS ===
+
+When the user sends a PHOTO of a lock, key, door, or job situation, you MUST:
+
+1. Identify exactly what's in the photo (lock type, brand, key type, mechanism, etc.)
+2. Provide step-by-step instructions as normal
+3. Include a <<<ANNOTATIONS>>> block with JSON that marks up THEIR photo with visual guides
+
+The annotations will be drawn as an SVG overlay on top of the user's original photo in the app.
+Coordinates are PERCENTAGES (0-100) relative to the image dimensions.
+
+Annotation types:
+- "circle": Highlight a specific point. Use to mark keyways, attack points, drill points, screw locations.
+- "arrow": Show direction of tool insertion, rotation, or movement. x1,y1 is the tail, x2,y2 is the arrowhead.
+- "label": Place a text label at a location on the image.
+
+FORMAT — place this BEFORE your text explanation:
+<<<ANNOTATIONS>>>
+[
+  {"type": "circle", "x": 50, "y": 35, "radius": 5, "color": "#FF3B30", "label": "Insert tension wrench here", "step": 1},
+  {"type": "arrow", "x1": 55, "y1": 40, "x2": 65, "y2": 35, "color": "#FF3B30", "label": "Rotate clockwise", "step": 2},
+  {"type": "label", "x": 30, "y": 70, "text": "Security pins here", "color": "#FFD60A", "step": 3}
+]
+<<<END_ANNOTATIONS>>>
+
+CRITICAL RULES for annotations:
+- Only include annotations when the user has sent a photo
+- Be as precise as possible with coordinates based on what you see in the image
+- Use step numbers that match your written instructions
+- Use red (#FF3B30) for primary action points, yellow (#FFD60A) for info labels, blue (#007AFF) for secondary notes
+- Keep labels SHORT (max 5-6 words) — the full explanation goes in your text
+- Reference your annotations in the text: "See step 1 (red circle) — insert your tension wrench at the keyway..."
+- 3-6 annotations is ideal. Don't overwhelm the image.
+
+=== REFERENCE IMAGES ===
+
+When your explanation would benefit from the user seeing a supplementary photo (e.g., what a specific tool looks like, what the inside of a mechanism looks like, a comparison photo), include a <<<REFERENCE_IMAGES>>> block:
+
+<<<REFERENCE_IMAGES>>>
+[
+  {"description": "Lishi HU66 2-in-1 pick and decoder tool", "searchTerm": "lishi hu66 pick decoder"},
+  {"description": "Inside view of a pin tumbler lock cylinder", "searchTerm": "pin tumbler lock cutaway"}
+]
+<<<END_REFERENCE_IMAGES>>>
+
+Only suggest reference images when they genuinely add value. Do NOT include them for every response.`;
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -239,7 +286,7 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 2048,
+          max_tokens: 4096,
           system: SYSTEM_PROMPT,
           messages,
         }),

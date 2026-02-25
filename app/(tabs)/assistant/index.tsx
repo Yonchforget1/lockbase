@@ -14,11 +14,13 @@ import {
   Modal,
   Dimensions,
   Pressable,
+  LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import Svg, { Circle, Line, Polygon, G, ForeignObject } from 'react-native-svg';
 import { colors } from '../../../src/lib/theme';
 import { useAssistantStore } from '../../../src/stores/assistantStore';
 import {
@@ -29,27 +31,274 @@ import {
   type ImageAttachment,
 } from '../../../src/services/assistant.service';
 import {
-  findInstructionalImages,
-  type InstructionalImage,
+  parseAssistantResponse,
+  type Annotation,
+  type ReferenceImage,
 } from '../../../src/services/imageMapping';
 import { useAuth } from '../../../src/hooks/useAuth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_THUMB_SIZE = 160;
+const ANNOTATED_IMAGE_WIDTH = SCREEN_WIDTH * 0.72; // fits inside bubble
 
-// ─── Image Zoom Modal ──────────────────────────────────────────────
+// ─── Annotated Image Component ────────────────────────────────────
+// Renders the user's original photo with SVG annotation overlays
+function AnnotatedImage({
+  imageUri,
+  annotations,
+  onPress,
+}: {
+  imageUri: string;
+  annotations: Annotation[];
+  onPress?: () => void;
+}) {
+  const [imgSize, setImgSize] = useState({ width: ANNOTATED_IMAGE_WIDTH, height: ANNOTATED_IMAGE_WIDTH * 0.75 });
+
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width } = e.nativeEvent.layout;
+    // Maintain 4:3 aspect ratio as default
+    setImgSize({ width, height: width * 0.75 });
+  }, []);
+
+  const w = imgSize.width;
+  const h = imgSize.height;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={styles.annotatedContainer}
+      onLayout={onLayout}
+    >
+      {/* User's original photo */}
+      <Image
+        source={{ uri: imageUri }}
+        style={{ width: w, height: h, borderRadius: 10 }}
+        contentFit="cover"
+        transition={200}
+      />
+
+      {/* SVG Overlay */}
+      <Svg
+        width={w}
+        height={h}
+        style={StyleSheet.absoluteFill}
+        viewBox={`0 0 ${w} ${h}`}
+      >
+        {annotations.map((ann, idx) => {
+          switch (ann.type) {
+            case 'circle':
+              return (
+                <AnnotationCircleSvg
+                  key={idx}
+                  ann={ann}
+                  w={w}
+                  h={h}
+                />
+              );
+            case 'arrow':
+              return (
+                <AnnotationArrowSvg
+                  key={idx}
+                  ann={ann}
+                  w={w}
+                  h={h}
+                />
+              );
+            case 'label':
+              return (
+                <AnnotationLabelSvg
+                  key={idx}
+                  ann={ann}
+                  w={w}
+                  h={h}
+                />
+              );
+            default:
+              return null;
+          }
+        })}
+      </Svg>
+
+      {/* "ANNOTATED" badge */}
+      <View style={styles.annotatedBadge}>
+        <MaterialCommunityIcons name="draw" size={10} color={colors.textPrimary} />
+        <Text style={styles.annotatedBadgeText}>ANNOTATED</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function AnnotationCircleSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
+  const cx = (ann.x / 100) * w;
+  const cy = (ann.y / 100) * h;
+  const r = (ann.radius / 100) * w;
+  const color = ann.color || '#FF3B30';
+
+  return (
+    <G>
+      <Circle cx={cx} cy={cy} r={r} stroke={color} strokeWidth={2.5} fill="none" />
+      {ann.step != null && (
+        <>
+          <Circle cx={cx - r - 8} cy={cy - r - 8} r={10} fill={color} />
+          <ForeignObject x={cx - r - 18} y={cy - r - 18} width={20} height={20}>
+            <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{ann.step}</Text>
+            </View>
+          </ForeignObject>
+        </>
+      )}
+    </G>
+  );
+}
+
+function AnnotationArrowSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
+  const x1 = (ann.x1 / 100) * w;
+  const y1 = (ann.y1 / 100) * h;
+  const x2 = (ann.x2 / 100) * w;
+  const y2 = (ann.y2 / 100) * h;
+  const color = ann.color || '#FF3B30';
+
+  // Arrowhead calculation
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLen = 10;
+  const p1x = x2 - headLen * Math.cos(angle - Math.PI / 6);
+  const p1y = y2 - headLen * Math.sin(angle - Math.PI / 6);
+  const p2x = x2 - headLen * Math.cos(angle + Math.PI / 6);
+  const p2y = y2 - headLen * Math.sin(angle + Math.PI / 6);
+
+  return (
+    <G>
+      <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={2.5} />
+      <Polygon points={`${x2},${y2} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />
+      {ann.step != null && (
+        <>
+          <Circle cx={x1} cy={y1} r={10} fill={color} />
+          <ForeignObject x={x1 - 10} y={y1 - 10} width={20} height={20}>
+            <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{ann.step}</Text>
+            </View>
+          </ForeignObject>
+        </>
+      )}
+    </G>
+  );
+}
+
+function AnnotationLabelSvg({ ann, w, h }: { ann: any; w: number; h: number }) {
+  const x = (ann.x / 100) * w;
+  const y = (ann.y / 100) * h;
+  const color = ann.color || '#FFD60A';
+  const labelWidth = Math.min(ann.text.length * 7 + 16, w * 0.6);
+  const labelHeight = 22;
+
+  return (
+    <G>
+      <ForeignObject
+        x={Math.min(x, w - labelWidth - 4)}
+        y={Math.min(y, h - labelHeight - 4)}
+        width={labelWidth}
+        height={labelHeight}
+      >
+        <View style={{
+          backgroundColor: color,
+          borderRadius: 4,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+        }}>
+          {ann.step != null && (
+            <View style={{
+              width: 16, height: 16, borderRadius: 8,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{ann.step}</Text>
+            </View>
+          )}
+          <Text
+            style={{ color: '#000', fontSize: 10, fontWeight: '700' }}
+            numberOfLines={1}
+          >
+            {ann.text}
+          </Text>
+        </View>
+      </ForeignObject>
+    </G>
+  );
+}
+
+// ─── Annotation Legend (below the annotated image) ────────────────
+function AnnotationLegend({ annotations }: { annotations: Annotation[] }) {
+  const numbered = annotations
+    .filter((a) => a.step != null)
+    .sort((a, b) => (a.step || 0) - (b.step || 0));
+  if (!numbered.length) return null;
+
+  return (
+    <View style={styles.legendContainer}>
+      {numbered.map((ann, idx) => {
+        const label =
+          ann.type === 'circle' ? ann.label :
+          ann.type === 'arrow' ? (ann.label || '') :
+          ann.type === 'label' ? ann.text : '';
+        if (!label) return null;
+        return (
+          <View key={idx} style={styles.legendRow}>
+            <View style={[styles.legendDot, { backgroundColor: ann.color || '#FF3B30' }]}>
+              <Text style={styles.legendDotText}>{ann.step}</Text>
+            </View>
+            <Text style={styles.legendLabel}>{label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Reference Image Card ─────────────────────────────────────────
+// Shows supplementary reference image suggestions (text-only, no broken images)
+function ReferenceImageCards({ refs }: { refs: ReferenceImage[] }) {
+  if (!refs.length) return null;
+  return (
+    <View style={styles.refContainer}>
+      <View style={styles.refHeader}>
+        <MaterialCommunityIcons name="image-search" size={14} color={colors.accentSecondary} />
+        <Text style={styles.refHeaderText}>REFERENCE IMAGES</Text>
+      </View>
+      {refs.map((ref, idx) => (
+        <View key={idx} style={styles.refCard}>
+          <MaterialCommunityIcons name="image-outline" size={20} color={colors.accentSecondary} />
+          <View style={styles.refCardText}>
+            <Text style={styles.refDescription}>{ref.description}</Text>
+            <Text style={styles.refSearch}>Search: "{ref.searchTerm}"</Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ─── Image Zoom Modal ─────────────────────────────────────────────
 function ImageZoomModal({
   visible,
   imageUri,
   caption,
+  annotations,
   onClose,
 }: {
   visible: boolean;
   imageUri: string | null;
   caption?: string;
+  annotations?: Annotation[];
   onClose: () => void;
 }) {
   if (!imageUri) return null;
+  const zoomW = SCREEN_WIDTH - 32;
+  const zoomH = zoomW * 0.75;
+
   return (
     <Modal
       visible={visible}
@@ -64,12 +313,37 @@ function ImageZoomModal({
             <MaterialCommunityIcons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
-        <Image
-          source={{ uri: imageUri }}
-          style={styles.zoomImage}
-          contentFit="contain"
-          transition={200}
-        />
+
+        <View>
+          <Image
+            source={{ uri: imageUri }}
+            style={{ width: zoomW, height: zoomH, borderRadius: 8 }}
+            contentFit="contain"
+            transition={200}
+          />
+          {annotations && annotations.length > 0 && (
+            <Svg
+              width={zoomW}
+              height={zoomH}
+              style={StyleSheet.absoluteFill}
+              viewBox={`0 0 ${zoomW} ${zoomH}`}
+            >
+              {annotations.map((ann, idx) => {
+                switch (ann.type) {
+                  case 'circle':
+                    return <AnnotationCircleSvg key={idx} ann={ann} w={zoomW} h={zoomH} />;
+                  case 'arrow':
+                    return <AnnotationArrowSvg key={idx} ann={ann} w={zoomW} h={zoomH} />;
+                  case 'label':
+                    return <AnnotationLabelSvg key={idx} ann={ann} w={zoomW} h={zoomH} />;
+                  default:
+                    return null;
+                }
+              })}
+            </Svg>
+          )}
+        </View>
+
         {caption ? (
           <View style={styles.zoomCaptionBar}>
             <Text style={styles.zoomCaption}>{caption}</Text>
@@ -109,59 +383,22 @@ function ImageThumbnails({
   );
 }
 
-// ─── Instructional Image Cards (for assistant responses) ──────────
-function InstructionalImageCards({
-  images,
-  onPress,
-}: {
-  images: InstructionalImage[];
-  onPress: (uri: string, caption: string) => void;
-}) {
-  if (!images.length) return null;
-  return (
-    <View style={styles.instructionalGrid}>
-      <View style={styles.instructionalHeader}>
-        <MaterialCommunityIcons name="image-multiple" size={14} color={colors.accentSecondary} />
-        <Text style={styles.instructionalLabel}>VISUAL GUIDES</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.instructionalScroll}>
-        {images.map((img, idx) => (
-          <TouchableOpacity
-            key={idx}
-            activeOpacity={0.8}
-            style={styles.instructionalCard}
-            onPress={() => onPress(img.url, img.caption)}
-          >
-            <Image
-              source={{ uri: img.url }}
-              style={styles.instructionalImage}
-              contentFit="cover"
-              transition={200}
-              placeholder={require('../../../assets/images/icon.png')}
-            />
-            <View style={styles.instructionalCaption}>
-              <Text style={styles.instructionalCaptionText} numberOfLines={2}>
-                {img.caption}
-              </Text>
-              <Text style={styles.instructionalCategory}>{img.category}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
 // ─── Message Bubble ───────────────────────────────────────────────
 function MessageBubble({
   message,
   onImagePress,
 }: {
   message: ChatMessage;
-  onImagePress: (uri: string, caption?: string) => void;
+  onImagePress: (uri: string, caption?: string, annotations?: Annotation[]) => void;
 }) {
   const isUser = message.role === 'user';
-  const instructionalImages = !isUser ? findInstructionalImages(message.content) : [];
+
+  // Parse assistant responses for annotations
+  const parsed = !isUser ? parseAssistantResponse(message.content) : null;
+  const displayText = parsed ? parsed.text : message.content;
+  const annotations = parsed?.annotations || [];
+  const referenceImages = parsed?.referenceImages || [];
+  const hasAnnotations = annotations.length > 0 && message.sourceImageUri;
 
   return (
     <View style={[styles.bubbleRow, isUser && styles.bubbleRowUser]}>
@@ -170,7 +407,11 @@ function MessageBubble({
           <MaterialCommunityIcons name="robot" size={18} color={colors.accentPrimary} />
         </View>
       )}
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
+      <View style={[
+        styles.bubble,
+        isUser ? styles.bubbleUser : styles.bubbleBot,
+        hasAnnotations && styles.bubbleBotWide,
+      ]}>
         {/* User-attached images */}
         {isUser && message.images && message.images.length > 0 && (
           <ImageThumbnails
@@ -178,16 +419,29 @@ function MessageBubble({
             onPress={(uri) => onImagePress(uri)}
           />
         )}
-        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-          {message.content}
-        </Text>
-        {/* Instructional images for assistant responses */}
-        {!isUser && instructionalImages.length > 0 && (
-          <InstructionalImageCards
-            images={instructionalImages}
-            onPress={(uri, caption) => onImagePress(uri, caption)}
-          />
+
+        {/* Annotated photo (assistant response with annotations on user's photo) */}
+        {hasAnnotations && (
+          <>
+            <AnnotatedImage
+              imageUri={message.sourceImageUri!}
+              annotations={annotations}
+              onPress={() => onImagePress(message.sourceImageUri!, 'Annotated Photo', annotations)}
+            />
+            <AnnotationLegend annotations={annotations} />
+          </>
         )}
+
+        {/* Text content */}
+        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+          {displayText}
+        </Text>
+
+        {/* Reference images (text-only cards, no broken images) */}
+        {!isUser && referenceImages.length > 0 && (
+          <ReferenceImageCards refs={referenceImages} />
+        )}
+
         <Text style={styles.bubbleTime}>
           {new Date(message.timestamp).toLocaleTimeString([], {
             hour: '2-digit',
@@ -362,8 +616,15 @@ export default function AssistantScreen() {
   const [input, setInput] = useState('');
   const [lookupData, setLookupData] = useState<any>(null);
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
-  const [zoomImage, setZoomImage] = useState<{ uri: string; caption?: string } | null>(null);
+  const [zoomImage, setZoomImage] = useState<{
+    uri: string;
+    caption?: string;
+    annotations?: Annotation[];
+  } | null>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Track the most recent user image URI so assistant responses can reference it
+  const lastUserImageUri = useRef<string | null>(null);
 
   // ─── Image picking ──────────────────────────────────────────────
   const pickImage = useCallback(async (source: 'camera' | 'library') => {
@@ -409,7 +670,7 @@ export default function AssistantScreen() {
       }));
 
       setAttachedImages((prev) => [...prev, ...newImages].slice(0, 4));
-    } catch (err: any) {
+    } catch {
       Alert.alert('Error', 'Could not access images. Please try again.');
     }
   }, [attachedImages.length]);
@@ -442,6 +703,11 @@ export default function AssistantScreen() {
     const imagesToSend = [...attachedImages];
     setAttachedImages([]);
 
+    // Track the user's image URI so the bot response can reference it
+    if (imagesToSend.length > 0) {
+      lastUserImageUri.current = imagesToSend[0].uri;
+    }
+
     const userMsg: ChatMessage = {
       role: 'user',
       content: text || (hasImages ? 'What can you tell me about this?' : ''),
@@ -452,7 +718,6 @@ export default function AssistantScreen() {
             width: img.width,
             height: img.height,
             mimeType: img.mimeType,
-            // Don't store base64 in message history (too large)
           }))
         : undefined,
     };
@@ -469,6 +734,8 @@ export default function AssistantScreen() {
         role: 'assistant',
         content: reply,
         timestamp: new Date().toISOString(),
+        // Attach the source image URI if user sent images (for annotation overlay)
+        sourceImageUri: imagesToSend.length > 0 ? imagesToSend[0].uri : undefined,
       };
       addMessage(botMsg);
 
@@ -503,8 +770,8 @@ export default function AssistantScreen() {
     setInput(text);
   };
 
-  const openZoom = useCallback((uri: string, caption?: string) => {
-    setZoomImage({ uri, caption });
+  const openZoom = useCallback((uri: string, caption?: string, annotations?: Annotation[]) => {
+    setZoomImage({ uri, caption, annotations });
   }, []);
 
   const canSend = input.trim() || attachedImages.length > 0;
@@ -516,6 +783,7 @@ export default function AssistantScreen() {
         visible={!!zoomImage}
         imageUri={zoomImage?.uri || null}
         caption={zoomImage?.caption}
+        annotations={zoomImage?.annotations}
         onClose={() => setZoomImage(null)}
       />
 
@@ -579,6 +847,7 @@ export default function AssistantScreen() {
             onPress={() => {
               clearChat();
               setAttachedImages([]);
+              lastUserImageUri.current = null;
             }}
           >
             <MaterialCommunityIcons name="plus" size={22} color={colors.textSecondary} />
@@ -608,7 +877,7 @@ export default function AssistantScreen() {
                 <View style={styles.photoHint}>
                   <MaterialCommunityIcons name="camera" size={18} color={colors.accentSecondary} />
                   <Text style={styles.photoHintText}>
-                    Tap the camera icon to identify a lock or key from a photo
+                    Send a photo and I'll annotate it with exact instructions — where to insert tools, attack points, and numbered steps
                   </Text>
                 </View>
                 <View style={styles.suggestions}>
@@ -860,6 +1129,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  bubbleBotWide: {
+    maxWidth: '85%', // wider when containing annotated image
+  },
   bubbleText: {
     fontSize: 15,
     color: colors.textPrimary,
@@ -875,7 +1147,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
 
-  // ─── Image styles in bubbles ──────────────────────────────────
+  // ─── User image thumbnails ────────────────────────────────────
   imageGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -889,55 +1161,102 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
 
-  // ─── Instructional image cards ────────────────────────────────
-  instructionalGrid: {
+  // ─── Annotated image ─────────────────────────────────────────
+  annotatedContainer: {
+    marginBottom: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  annotatedBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  annotatedBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: 0.8,
+  },
+
+  // ─── Annotation legend ────────────────────────────────────────
+  legendContainer: {
+    marginBottom: 8,
+    gap: 4,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legendDotText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  legendLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+
+  // ─── Reference images (text cards) ────────────────────────────
+  refContainer: {
     marginTop: 10,
     marginBottom: 4,
   },
-  instructionalHeader: {
+  refHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  instructionalLabel: {
+  refHeaderText: {
     fontSize: 10,
     fontWeight: '700',
     color: colors.accentSecondary,
     letterSpacing: 0.8,
   },
-  instructionalScroll: {
-    marginHorizontal: -4,
-  },
-  instructionalCard: {
-    width: 140,
-    marginHorizontal: 4,
-    borderRadius: 10,
+  refCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
     backgroundColor: colors.bgTertiary,
-    overflow: 'hidden',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  instructionalImage: {
-    width: 140,
-    height: 100,
-    backgroundColor: colors.bgPrimary,
+  refCardText: {
+    flex: 1,
   },
-  instructionalCaption: {
-    padding: 8,
-  },
-  instructionalCaptionText: {
-    fontSize: 11,
+  refDescription: {
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textPrimary,
-    lineHeight: 14,
+    lineHeight: 16,
   },
-  instructionalCategory: {
-    fontSize: 9,
+  refSearch: {
+    fontSize: 10,
     color: colors.textTertiary,
     marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontStyle: 'italic',
   },
 
   // ─── Attached images preview (before sending) ─────────────────
@@ -986,10 +1305,6 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.bgSecondary}CC`,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  zoomImage: {
-    width: SCREEN_WIDTH - 32,
-    height: SCREEN_WIDTH - 32,
   },
   zoomCaptionBar: {
     position: 'absolute',
