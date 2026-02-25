@@ -62,6 +62,17 @@ function parseMarkdownToSegments(raw: string): TextSegment[][] {
       continue;
     }
 
+    // Skip lines that are just a bullet marker with no content (orphan bullets)
+    if (/^[-*•](\s*)$/.test(trimmed)) {
+      continue;
+    }
+
+    // Skip horizontal rules (---, ***, ___)
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      result.push([{ text: '' }]); // treat as spacer
+      continue;
+    }
+
     // Headers: ## or ### → bold header text
     const headerMatch = trimmed.match(/^#{1,4}\s+(.+)$/);
     if (headerMatch) {
@@ -69,10 +80,13 @@ function parseMarkdownToSegments(raw: string): TextSegment[][] {
       continue;
     }
 
-    // Bullet points: - text or * text
-    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    // Bullet points: - text or * text (including sub-bullets with leading whitespace)
+    const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
     if (bulletMatch) {
-      result.push(parseBoldSegments(bulletMatch[1], true));
+      const bulletContent = bulletMatch[1].trim();
+      if (bulletContent) {
+        result.push(parseBoldSegments(bulletContent, true));
+      }
       continue;
     }
 
@@ -85,8 +99,12 @@ function parseMarkdownToSegments(raw: string): TextSegment[][] {
       continue;
     }
 
-    // Regular line — parse bold segments
-    result.push(parseBoldSegments(trimmed));
+    // Regular line — parse bold segments; skip if all content is stripped away
+    const regularSegs = parseBoldSegments(trimmed);
+    const hasContent = regularSegs.some((s) => s.text.trim());
+    if (hasContent) {
+      result.push(regularSegs);
+    }
   }
 
   return result;
@@ -129,13 +147,15 @@ function FormattedMessage({
 
   const lines = parseMarkdownToSegments(text);
 
-  // Collapse multiple blank lines into max 1
+  // Collapse multiple blank lines into max 1, and filter orphan bullets/empty segments
   const collapsed: TextSegment[][] = [];
   let prevBlank = false;
   for (const line of lines) {
     const isBlank = line.length === 1 && line[0].text === '';
-    if (isBlank) {
-      if (!prevBlank) collapsed.push(line);
+    // Filter lines where ALL segments are empty/whitespace-only
+    const allEmpty = line.every((s) => !s.text.trim() && !s.header);
+    if (isBlank || allEmpty) {
+      if (!prevBlank) collapsed.push([{ text: '' }]);
       prevBlank = true;
     } else {
       collapsed.push(line);
@@ -154,6 +174,12 @@ function FormattedMessage({
         const isHeader = segments.some((s) => s.header);
         const isBullet = segments.some((s) => s.bullet);
 
+        // Skip bullet lines where all text content is empty/whitespace
+        const combinedText = segments.map((s) => s.text).join('').trim();
+        if (isBullet && !combinedText) {
+          return null;
+        }
+
         return (
           <View
             key={lineIdx}
@@ -166,7 +192,7 @@ function FormattedMessage({
             {isBullet && (
               <Text style={styles.formattedBulletDot}>{'\u2022'} </Text>
             )}
-            <Text style={[styles.bubbleText, isHeader && styles.formattedHeaderText]}>
+            <Text style={[styles.bubbleText, isHeader && styles.formattedHeaderText, isBullet && styles.formattedBulletText]}>
               {segments.map((seg, segIdx) => (
                 <Text
                   key={segIdx}
@@ -1307,12 +1333,18 @@ const styles = StyleSheet.create({
   },
   formattedBulletLine: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'flex-start',
     paddingLeft: 4,
   },
   formattedBulletDot: {
     fontSize: 15,
     color: colors.textSecondary,
     lineHeight: 22,
+    flexShrink: 0,
+  },
+  formattedBulletText: {
+    flex: 1,
   },
   formattedBold: {
     fontWeight: '700',
