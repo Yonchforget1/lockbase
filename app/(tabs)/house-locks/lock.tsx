@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -63,8 +63,10 @@ export default function LockScreen() {
   const { lockId, lockName } = useLocalSearchParams<{ lockId: string; lockName: string }>();
   const { data: lock, isLoading: lockLoading } = useLockDetail(lockId ?? '');
   const { data: blanks, isLoading: blanksLoading } = useKeyBlanks(lockId ?? '');
+  const [imgError, setImgError] = useState(false);
 
   const isLoading = lockLoading || blanksLoading;
+  const hasImage = lock?.image_url && !imgError;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,7 +89,16 @@ export default function LockScreen() {
           {/* Lock Hero */}
           <View style={styles.hero}>
             <View style={styles.heroIcon}>
-              <MaterialCommunityIcons name="lock" size={48} color={colors.accentSecondary} />
+              {hasImage ? (
+                <Image
+                  source={{ uri: lock.image_url! }}
+                  style={styles.heroImage}
+                  resizeMode="contain"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <MaterialCommunityIcons name="lock" size={48} color={colors.accentSecondary} />
+              )}
             </View>
             <Text style={styles.heroTitle}>{lock.name}</Text>
             <View style={styles.heroBadges}>
@@ -190,6 +201,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
+    overflow: 'hidden',
+  },
+  heroImage: {
+    width: 80,
+    height: 80,
   },
   heroTitle: {
     fontSize: 24,

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -12,11 +12,23 @@ interface LockCardProps {
 }
 
 export function LockCard({ lock, onPress }: LockCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const hasImage = lock.image_url && !imgError;
+
   return (
     <Card onPress={onPress} style={styles.container}>
       <View style={styles.header}>
         <View style={styles.iconWrap}>
-          <MaterialCommunityIcons name="lock" size={22} color={colors.accentSecondary} />
+          {hasImage ? (
+            <Image
+              source={{ uri: lock.image_url! }}
+              style={styles.lockThumb}
+              resizeMode="contain"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <MaterialCommunityIcons name="lock" size={22} color={colors.accentSecondary} />
+          )}
         </View>
         <View style={styles.headerText}>
           <Text style={styles.title}>{lock.name}</Text>
@@ -79,6 +91,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  lockThumb: {
+    width: 36,
+    height: 36,
   },
   headerText: {
     flex: 1,
